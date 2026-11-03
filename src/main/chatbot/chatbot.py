@@ -574,8 +574,19 @@ class Chatbot:
                         provider=provider,
                         api_key=api_key,
                         tool_names=mcp_selected_tools,
+                        model_type=model_type,
+                        selected_lora=selected_lora if selected_lora != "None" else None,
+                        local_model_path=custom_path if selected_model == "사용자 지정 모델 경로 변경" else None,
+                        image_input=image_input,
+                        device=device,
+                        seed=seed,
+                        max_length=max_length,
                         temperature=temperature,
-                        max_tokens=max_length if max_length and max_length > 0 else 4096,
+                        top_k=top_k,
+                        top_p=top_p,
+                        repetition_penalty=repetition_penalty,
+                        enable_thinking=enable_thinking,
+                        character_language=language,
                     )
                 except RuntimeError as e:
                     # 도구가 없거나 연결되지 않은 경우 일반 생성으로 폴백

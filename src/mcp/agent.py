@@ -1,27 +1,20 @@
 # MCP Tool-Calling Agent
-# Bridges MCP client tools into the ai-companion-gateway tool-calling loop.
-# Provider endpoint knowledge (base_url / env keys) lives in the gateway; this
-# module only resolves clients and adapts MCP tool results.
+# MCP 도구를 모델 실행 계층(src.models.models)에 연결하는 어댑터.
+# 클라이언트 생성/캐시/샘플링 설정은 models.generate_answer가 담당하고,
+# 이 모듈은 MCP 도구 선택·스키마 변환·실행기 구성만 처리한다.
 
 from typing import Any, Dict, List, Optional
 
-from ai_companion_gateway import (
-    ToolResult,
-    build_tool_specs_from_mcp,
-    resolve_openai_endpoint,
-    run_tool_loop,
-    run_tool_loop_responses,
-    supports_openai_tools,
-)
+from ai_companion_gateway import ToolResult, build_tool_specs_from_mcp, supports_openai_tools
 
 from src.common.custom_providers import CUSTOM_PREFIX
-from src.models.gateway_providers import register_custom_gateway_providers
+from src.models.models import DEFAULT_MAX_TOOL_ITERATIONS, generate_answer
 
 from .client.manager import MCPClientManager, get_mcp_client_manager
 from .client.models import MCPToolResult
 from .runtime import run_mcp_coro
 
-MAX_TOOL_ITERATIONS = 6
+MAX_TOOL_ITERATIONS = DEFAULT_MAX_TOOL_ITERATIONS
 
 _TOOL_USAGE_HINT = (
     "You can call external tools to answer the user. "
@@ -43,45 +36,6 @@ def supports_mcp_tools(provider: str) -> bool:
     return supports_openai_tools(provider)
 
 
-def _content_to_openai(content: Any) -> Any:
-    """Convert internal multimodal content into OpenAI chat content format."""
-    if isinstance(content, str):
-        return content
-    if not isinstance(content, list):
-        return str(content)
-
-    parts: List[Dict[str, Any]] = []
-    for item in content:
-        if isinstance(item, str):
-            parts.append({"type": "text", "text": item})
-            continue
-        if not isinstance(item, dict):
-            continue
-        item_type = item.get("type")
-        if item_type == "text" or "text" in item:
-            parts.append({"type": "text", "text": item.get("text", "")})
-        elif item_type == "image":
-            url = item.get("url") or item.get("image_url")
-            if url:
-                parts.append({"type": "image_url", "image_url": {"url": url}})
-
-    if not parts:
-        return ""
-    if len(parts) == 1 and parts[0]["type"] == "text":
-        return parts[0]["text"]
-    return parts
-
-
-def _build_messages(history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    messages: List[Dict[str, Any]] = []
-    for msg in history:
-        role = msg.get("role")
-        if role not in ("system", "user", "assistant"):
-            continue
-        messages.append({"role": role, "content": _content_to_openai(msg.get("content", ""))})
-    return messages
-
-
 def _mcp_result_to_tool_result(result: MCPToolResult) -> ToolResult:
     return ToolResult(
         success=result.success,
@@ -89,18 +43,6 @@ def _mcp_result_to_tool_result(result: MCPToolResult) -> ToolResult:
         error=result.error,
         content_type=result.content_type,
     )
-
-
-def _resolve_client(provider: str, api_key: Optional[str]):
-    """Build an OpenAI-compatible client using gateway endpoint metadata."""
-    import openai
-
-    if provider.startswith(CUSTOM_PREFIX):
-        # Make sure the profile from custom_providers.yaml is registered.
-        register_custom_gateway_providers()
-
-    base_url, key = resolve_openai_endpoint(provider, api_key)
-    return openai.OpenAI(api_key=key, base_url=base_url)
 
 
 def _make_executor(manager: MCPClientManager):
@@ -119,19 +61,53 @@ def _select_tools(manager: MCPClientManager, tool_names: Optional[List[str]]) ->
     return all_tools
 
 
+def _inject_tool_hint(history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """시스템 메시지에 tool 사용 힌트를 추가한다 (원본은 변경하지 않음)."""
+    history = [dict(msg) for msg in history]
+    if history and history[0].get("role") == "system":
+        content = history[0].get("content", "")
+        if isinstance(content, list):
+            content = list(content) + [{"type": "text", "text": _TOOL_USAGE_HINT}]
+        else:
+            content = f"{content}\n\n{_TOOL_USAGE_HINT}" if content else _TOOL_USAGE_HINT
+        history[0]["content"] = content
+    else:
+        history.insert(0, {"role": "system", "content": _TOOL_USAGE_HINT})
+    return history
+
+
 def run_tool_agent(
     history: List[Dict[str, Any]],
     selected_model: str,
     provider: str,
     api_key: Optional[str] = None,
     tool_names: Optional[List[str]] = None,
-    temperature: float = 0.6,
-    max_tokens: int = 4096,
+    model_type: Optional[str] = None,
+    selected_lora: Optional[str] = None,
+    local_model_path: Optional[str] = None,
+    lora_path: Optional[str] = None,
+    image_input: Any = None,
+    audio_input: Any = None,
+    video_input: Any = None,
+    device: str = "cpu",
+    seed: int = 42,
+    max_length: int = -1,
+    temperature: float = 1.0,
+    top_k: int = 50,
+    top_p: float = 1.0,
+    repetition_penalty: float = 1.0,
+    enable_thinking: bool = False,
+    enable_streaming: bool = False,
+    character_language: str = "ko",
     max_iterations: int = MAX_TOOL_ITERATIONS,
     manager: Optional[MCPClientManager] = None,
 ) -> str:
     """
-    Run the gateway tool-calling loop using MCP tools.
+    Run the model with MCP tools.
+
+    ``models.generate_answer``와 동일한 파라미터를 받아, MCP 도구를
+    tool_specs/tool_executor로 붙여 실행한다. 모델 로드·캐시·샘플링 설정은
+    models 계층이 단일 책임으로 처리한다.
 
     Args:
         history: Conversation history in the app's internal message format.
@@ -140,8 +116,23 @@ def run_tool_agent(
         api_key: Optional API key; falls back to env / stored profile.
         tool_names: Optional list of MCP tool full names to expose. When None,
             all discovered tools are exposed.
+        model_type: Local model type (self-provided only).
+        selected_lora: LoRA id for local models.
+        local_model_path: Custom local model path.
+        lora_path: LoRA path.
+        image_input: Optional image input.
+        audio_input: Optional audio input.
+        video_input: Optional video input.
+        device: Local inference device.
+        seed: Sampling seed.
+        max_length: Max generation length (``<= 0`` uses the model default).
         temperature: Sampling temperature.
-        max_tokens: Max response tokens per completion.
+        top_k: Top-k sampling.
+        top_p: Nucleus sampling.
+        repetition_penalty: Repetition penalty.
+        enable_thinking: Enable reasoning/thinking where supported.
+        enable_streaming: Stream tokens to stdout.
+        character_language: Output language hint.
         max_iterations: Safety cap on tool-calling rounds.
         manager: Optional MCP client manager (defaults to the global one).
 
@@ -155,41 +146,32 @@ def run_tool_agent(
         raise RuntimeError("No MCP tools are available. Connect an MCP server and select tools.")
 
     tool_specs = build_tool_specs_from_mcp(tools)
-    client = _resolve_client(provider, api_key)
-    messages = _build_messages(history)
 
-    # OpenAI's official endpoint uses the Responses API; the rest use
-    # OpenAI-compatible chat.completions.
-    if provider == "openai":
-        system_prompt = next((str(m.get("content", "")) for m in history if m.get("role") == "system"), None)
-        input_items = [m for m in messages if m.get("role") != "system"]
-        hint = _TOOL_USAGE_HINT
-        if system_prompt:
-            system_prompt = system_prompt + "\n\n" + hint
-        else:
-            system_prompt = hint
-        return run_tool_loop_responses(
-            client=client,
-            model=selected_model,
-            input_items=input_items,
-            tool_specs=tool_specs,
-            executor=_make_executor(manager),
-            instructions=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            max_iterations=max_iterations,
-        )
-
-    return run_tool_loop(
-        client=client,
-        model=selected_model,
-        messages=messages,
-        tool_specs=tool_specs,
-        executor=_make_executor(manager),
+    return generate_answer(
+        history=_inject_tool_hint(history),
+        selected_model=selected_model,
+        provider=provider,
+        model_type=model_type,
+        selected_lora=selected_lora,
+        local_model_path=local_model_path,
+        lora_path=lora_path,
+        image_input=image_input,
+        audio_input=audio_input,
+        video_input=video_input,
+        api_key=api_key,
+        device=device,
+        seed=seed,
+        max_length=max_length,
         temperature=temperature,
-        max_tokens=max_tokens,
-        max_iterations=max_iterations,
-        system_tool_hint=_TOOL_USAGE_HINT,
+        top_k=top_k,
+        top_p=top_p,
+        repetition_penalty=repetition_penalty,
+        enable_thinking=enable_thinking,
+        enable_streaming=enable_streaming,
+        tool_specs=tool_specs,
+        tool_executor=_make_executor(manager),
+        max_tool_iterations=max_iterations,
+        character_language=character_language,
     )
 
 

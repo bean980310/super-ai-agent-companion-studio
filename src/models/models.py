@@ -18,6 +18,7 @@ from src.common.cache import models_cache
 from ai_companion_llm_backend import TransformersVisionModelHandler, TransformersUnifiedModelHandler, GGUFCausalModelHandler, MlxVisionModelHandler, MlxUnifiedModelHandler
 
 import ai_companion_gateway as gateway
+from ai_companion_gateway import ToolExecutor, ToolSpec
 
 from src.common.utils import build_model_cache_key
 from src.common.custom_providers import CUSTOM_PREFIX, get_custom_provider
@@ -55,6 +56,52 @@ def get_default_device():
 default_device = get_default_device()
 logger.info(f"Default device set to: {default_device}")
 
+DEFAULT_MAX_TOOL_ITERATIONS = 6
+
+
+def _configure_handler_tools(
+    handler,
+    tool_specs: List[ToolSpec] | None,
+    tool_executor: ToolExecutor | None,
+    max_tool_iterations: int,
+) -> None:
+    """요청별 tool 설정을 (캐시된) 핸들러에 적용한다.
+
+    도구는 모델/핸들러 캐시 키가 아니라 호출 단위 설정이므로, 매 요청마다
+    갱신해 이전 요청의 도구가 남지 않도록 한다.
+    """
+    handler.tool_specs = list(tool_specs) if tool_specs else []
+    handler.tool_executor = tool_executor
+    handler.max_tool_iterations = int(max_tool_iterations)
+    if not tool_specs:
+        # legacy 스키마 경로(handler.tools)로 폴백되지 않도록 비운다.
+        handler.tools = []
+
+
+def _apply_generation_settings(
+    handler,
+    *,
+    seed: int,
+    max_length: int,
+    temperature: float,
+    top_k: int,
+    top_p: float,
+    repetition_penalty: float,
+    enable_thinking: bool,
+    enable_streaming: bool,
+) -> None:
+    """캐시된 핸들러에도 현재 샘플링 설정을 반영한다."""
+    handler.seed = seed
+    handler.temperature = temperature
+    handler.top_k = top_k
+    handler.top_p = top_p
+    handler.repetition_penalty = repetition_penalty
+    handler.enable_thinking = enable_thinking
+    handler.enable_streaming = enable_streaming
+    if max_length and max_length > 0:
+        handler.max_length = max_length
+        handler.max_tokens = max_length
+
 
 def load_model(
     selected_model: str,
@@ -69,6 +116,9 @@ def load_model(
     image_input: str | List[str] | Image.Image | List[Image.Image] | ImageFile.ImageFile | List[ImageFile.ImageFile] | Any | None = None,
     audio_input: str | List[str] | Any | None = None,
     video_input: str | List[str] | Any | None = None,
+    tool_specs: List[ToolSpec] | None = None,
+    tool_executor: ToolExecutor | None = None,
+    max_tool_iterations: int = DEFAULT_MAX_TOOL_ITERATIONS,
     **kwargs,
 ):
     """
@@ -77,6 +127,9 @@ def load_model(
     - API/서버 프로바이더: ai-companion-gateway의 클라이언트 팩토리로 위임.
       (프로바이더별 if/elif 분기 대신 gateway.create_client()가 단일 진입점)
     - self-provided(로컬 추론): transformers / gguf / mlx 핸들러를 직접 생성.
+
+    ``tool_specs``/``tool_executor``를 넘기면 핸들러가 tool-calling 경로를
+    사용한다. (MCP 에이전트도 이 함수를 통해 모델을 로드한다.)
     """
     model_id = selected_model
     lora_model_id = selected_lora if selected_lora else None
@@ -95,8 +148,13 @@ def load_model(
 
     if provider not in LOCAL_MODEL_PROVIDERS:
         # gateway가 처리하는 프로바이더 (openai/anthropic/ollama/lmstudio/vllm/custom:* 등)
+        tool_kwargs: dict[str, Any] = {"max_tool_iterations": max_tool_iterations}
+        if tool_specs is not None:
+            tool_kwargs["tool_specs"] = tool_specs
+        if tool_executor is not None:
+            tool_kwargs["tool_executor"] = tool_executor
         try:
-            return gateway.create_client(selected_model, provider, api_key=api_key, **kwargs)
+            return gateway.create_client(selected_model, provider, api_key=api_key, **tool_kwargs, **kwargs)
         except ValueError as e:
             logger.error(str(e))
             return str(e)
@@ -193,10 +251,17 @@ def generate_answer(
     repetition_penalty: float = 1.0,
     enable_thinking: bool = False,
     enable_streaming: bool = False,
+    tool_specs: List[ToolSpec] | None = None,
+    tool_executor: ToolExecutor | None = None,
+    max_tool_iterations: int = DEFAULT_MAX_TOOL_ITERATIONS,
     character_language: str = "ko",
 ):
     """
     사용자 히스토리를 기반으로 답변 생성.
+
+    ``tool_specs``/``tool_executor``를 넘기면 tool-calling 경로를 사용한다.
+    핸들러는 모델별로 캐시되지만 tool 설정과 샘플링 설정은 매 호출마다
+    갱신된다.
     """
 
     random.seed(seed)
@@ -241,11 +306,32 @@ def generate_answer(
             top_p=top_p,
             repetition_penalty=repetition_penalty,
             enable_thinking=enable_thinking,
+            tool_specs=tool_specs,
+            tool_executor=tool_executor,
+            max_tool_iterations=max_tool_iterations,
         )
+
+    if isinstance(handler, str):
+        # load_model이 오류 메시지를 반환한 경우
+        return handler
 
     if not handler:
         logger.error("모델 핸들러가 로드되지 않았습니다.")
         return "모델 핸들러가 로드되지 않았습니다."
+
+    # 캐시된 핸들러라도 현재 요청의 설정을 반영한다.
+    _apply_generation_settings(
+        handler,
+        seed=seed,
+        max_length=max_length,
+        temperature=temperature,
+        top_k=top_k,
+        top_p=top_p,
+        repetition_penalty=repetition_penalty,
+        enable_thinking=enable_thinking,
+        enable_streaming=enable_streaming,
+    )
+    _configure_handler_tools(handler, tool_specs, tool_executor, max_tool_iterations)
 
     logger.info(f"[*] Generating answer using {handler.__class__.__name__}")
     try:

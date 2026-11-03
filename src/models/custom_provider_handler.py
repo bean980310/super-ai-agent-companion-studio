@@ -76,6 +76,10 @@ class CustomOpenAIClientWrapper(BaseAPIClientWrapper):
         return content
 
     def generate_answer(self, history: list[dict[str, str | list[dict[str, str]] | Any]], **kwargs) -> str:
+        # --- Tool calling path (OpenAI-compatible chat completions) ---
+        if self.can_run_tools():
+            return self.run_tool_calling(history)
+
         messages = [
             {"role": msg["role"], "content": self._normalize_content(msg["content"])}
             for msg in history
