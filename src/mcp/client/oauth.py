@@ -307,6 +307,15 @@ class FileTokenStorage(TokenStorage):
         except Exception as e:
             logger.error(f"Failed to save client info: {e}")
 
+    def clear_client_info(self) -> None:
+        """Delete the stored dynamic client registration to force re-registration."""
+        if self._client_info_path.exists():
+            try:
+                self._client_info_path.unlink()
+                logger.info(f"Deleted {self._client_info_path.name} for {self.server_name}")
+            except Exception as e:
+                logger.error(f"Failed to delete client info for {self.server_name}: {e}")
+
 
 # ---------------------------------------------------------------------------
 # Local OAuth Callback Server
@@ -705,6 +714,20 @@ async def create_oauth_provider(config) -> "httpx2.Auth":
     # --- Standard MCP dynamic registration (SDK handles PKCE internally) ---
     logger.info(f"Creating dynamic-registration OAuth provider for '{config.name}'")
 
+    token_auth_method = config.oauth_token_endpoint_auth_method or "none"
+
+    # A registration is bound to the auth method it was created with. If the configured
+    # method changed (e.g. switching Figma MCP from "none" to "client_secret_post"),
+    # drop the cached registration so the next request registers again.
+    stored_client = await storage.get_client_info()
+    if stored_client and (stored_client.token_endpoint_auth_method or "none") != token_auth_method:
+        logger.info(
+            f"OAuth registration for '{config.name}' uses '{stored_client.token_endpoint_auth_method or 'none'}' "
+            f"but '{token_auth_method}' is configured. Clearing cached registration."
+        )
+        storage.clear_client_info()
+        storage.clear_tokens()
+
     async def redirect_handler(authorization_url: str) -> None:
         logger.info(f"Opening browser for OAuth authorization: {authorization_url}")
         webbrowser.open(authorization_url)
@@ -713,7 +736,7 @@ async def create_oauth_provider(config) -> "httpx2.Auth":
 
     client_metadata = OAuthClientMetadata(
         redirect_uris=[AnyUrl(redirect_uri)],
-        token_endpoint_auth_method="none",
+        token_endpoint_auth_method=token_auth_method,
         grant_types=["authorization_code", "refresh_token"],
         response_types=["code"],
         client_name=config.oauth_client_name or "AI Companion MCP Client",

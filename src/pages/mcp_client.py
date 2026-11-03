@@ -26,7 +26,7 @@ def run_async(coro, timeout: float = 300.0):
 mcp_manager = get_mcp_client_manager()
 
 
-def add_mcp_server(name: str, url: str, transport: str, api_key: str, timeout: float, description: str, command: str, args: str, env: str, oauth_enabled: bool, oauth_client_id: str, oauth_client_secret: str, oauth_issuer: str, oauth_authorization_endpoint: str, oauth_token_endpoint: str, oauth_scopes: str) -> tuple:
+def add_mcp_server(name: str, url: str, transport: str, api_key: str, timeout: float, description: str, command: str, args: str, env: str, oauth_enabled: bool, oauth_client_id: str, oauth_client_secret: str, oauth_issuer: str, oauth_authorization_endpoint: str, oauth_token_endpoint: str, oauth_scopes: str, oauth_client_name: str, oauth_token_endpoint_auth_method: str) -> tuple:
     """Add a new MCP server configuration"""
     is_stdio = transport == "stdio"
 
@@ -68,6 +68,8 @@ def add_mcp_server(name: str, url: str, transport: str, api_key: str, timeout: f
             oauth_authorization_endpoint=oauth_authorization_endpoint if oauth_authorization_endpoint else None,
             oauth_token_endpoint=oauth_token_endpoint if oauth_token_endpoint else None,
             oauth_scopes=oauth_scopes if oauth_scopes else None,
+            oauth_client_name=oauth_client_name if oauth_client_name else None,
+            oauth_token_endpoint_auth_method=oauth_token_endpoint_auth_method if oauth_token_endpoint_auth_method else None,
         )
 
         servers = get_servers_display()
@@ -357,6 +359,8 @@ with gr.Blocks() as demo:
                     oauth_auth_endpoint_input = gr.Textbox(label="Authorization Endpoint", placeholder="https://github.com/login/oauth/authorize")
                     oauth_token_endpoint_input = gr.Textbox(label="Token Endpoint", placeholder="https://github.com/login/oauth/access_token")
                     oauth_scopes_input = gr.Textbox(label="OAuth Scopes", placeholder="read:user repo")
+                    oauth_client_name_input = gr.Textbox(label="OAuth Client Name (optional)", placeholder="AI Companion MCP Client", info="Sent during dynamic client registration. Some servers (e.g. Figma MCP) only allow specific names such as 'Codex' or 'Claude Code'.")
+                    oauth_token_auth_method_input = gr.Dropdown(label="Token Endpoint Auth Method", choices=["none", "client_secret_post", "client_secret_basic"], value="none", info="Dynamic registration only. Use 'client_secret_post' when the server issues a client secret but still requires it at the token endpoint (e.g. Figma MCP).")
                 add_server_btn = gr.Button("Add Server", variant="primary")
 
         with gr.Row():
@@ -489,6 +493,8 @@ with gr.Blocks() as demo:
             oauth_auth_endpoint_input,
             oauth_token_endpoint_input,
             oauth_scopes_input,
+            oauth_client_name_input,
+            oauth_token_auth_method_input,
         ],
         outputs=[servers_table, status_text, server_select],
     ).then(
@@ -508,8 +514,10 @@ with gr.Blocks() as demo:
             gr.update(value=""),
             gr.update(value=""),
             gr.update(value=""),
+            gr.update(value=""),
+            gr.update(value="none"),
         ),
-        outputs=[server_name_input, server_url_input, transport_dropdown, api_key_input, timeout_input, description_input, command_input, args_input, env_input, enable_oauth_checkbox, oauth_client_id_input, oauth_client_secret_input, oauth_auth_endpoint_input, oauth_token_endpoint_input, oauth_scopes_input],
+        outputs=[server_name_input, server_url_input, transport_dropdown, api_key_input, timeout_input, description_input, command_input, args_input, env_input, enable_oauth_checkbox, oauth_client_id_input, oauth_client_secret_input, oauth_auth_endpoint_input, oauth_token_endpoint_input, oauth_scopes_input, oauth_client_name_input, oauth_token_auth_method_input],
     ).then(fn=lambda: gr.update(choices=get_server_names()), outputs=[server_select])
 
     remove_server_btn.click(fn=remove_mcp_server, inputs=[server_select], outputs=[servers_table, status_text, server_select])

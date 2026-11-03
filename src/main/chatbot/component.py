@@ -199,7 +199,7 @@ class ChatbotComponent:
                 # type='messages',
                 chatbot=chatbot,
                 multimodal=True,
-                textbox=gr.MultimodalTextbox(file_count="multiple", sources=["upload"], file_types=COMMON_FILE_TYPES),
+                textbox=gr.MultimodalTextbox(file_count="multiple", sources=["upload", "microphone"], file_types=COMMON_FILE_TYPES, stop_btn=True),
                 additional_inputs=real_additional_inputs,
                 additional_outputs=[
                     app_state.history_state,

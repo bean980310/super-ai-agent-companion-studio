@@ -61,6 +61,10 @@ class MCPServerConfig:
     oauth_issuer: Optional[str] = None
     oauth_authorization_endpoint: Optional[str] = None
     oauth_token_endpoint: Optional[str] = None
+    # Token endpoint client authentication used during dynamic registration.
+    # "none" = public client (PKCE only); "client_secret_post" / "client_secret_basic"
+    # for servers that issue a client_secret and require it at the token endpoint.
+    oauth_token_endpoint_auth_method: Optional[str] = None
     # Set to False when the authorization server does not support PKCE (RFC 7636).
     oauth_use_pkce: bool = True
 
@@ -91,6 +95,7 @@ class MCPServerConfig:
             base["oauth_issuer"] = self.oauth_issuer
             base["oauth_authorization_endpoint"] = self.oauth_authorization_endpoint
             base["oauth_token_endpoint"] = self.oauth_token_endpoint
+            base["oauth_token_endpoint_auth_method"] = self.oauth_token_endpoint_auth_method
             base["oauth_use_pkce"] = self.oauth_use_pkce
         return base
 
@@ -122,6 +127,7 @@ class MCPServerConfig:
             oauth_issuer=data.get("oauth_issuer"),
             oauth_authorization_endpoint=data.get("oauth_authorization_endpoint"),
             oauth_token_endpoint=data.get("oauth_token_endpoint"),
+            oauth_token_endpoint_auth_method=data.get("oauth_token_endpoint_auth_method"),
             oauth_use_pkce=data.get("oauth_use_pkce", True),
         )
 

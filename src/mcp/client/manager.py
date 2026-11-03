@@ -216,6 +216,8 @@ class MCPClientManager:
         oauth_authorization_endpoint: Optional[str] = None,
         oauth_token_endpoint: Optional[str] = None,
         oauth_scopes: Optional[str] = None,
+        oauth_client_name: Optional[str] = None,
+        oauth_token_endpoint_auth_method: Optional[str] = None,
         save: bool = True,
         server_id: Optional[str] = None,
     ) -> MCPServerConfig:
@@ -240,6 +242,10 @@ class MCPClientManager:
             oauth_authorization_endpoint: OAuth authorization endpoint URL
             oauth_token_endpoint: OAuth token endpoint URL
             oauth_scopes: Space-separated OAuth scopes
+            oauth_client_name: Client name sent during dynamic client registration
+                (some servers only allow specific names, e.g. Figma MCP)
+            oauth_token_endpoint_auth_method: Client authentication at the token endpoint
+                ("none", "client_secret_post", or "client_secret_basic")
             save: Whether to persist the configuration
             server_id: Optional explicit server ID (defaults to kebab-case of name)
 
@@ -259,7 +265,8 @@ class MCPClientManager:
             description=description,
             oauth=oauth or {},
             oauth_enabled=oauth_enabled,
-            oauth_client_name="AI Companion MCP Client",
+            oauth_client_name=oauth_client_name or "AI Companion MCP Client",
+            oauth_token_endpoint_auth_method=oauth_token_endpoint_auth_method,
             oauth_client_id=oauth_client_id,
             oauth_client_secret=oauth_client_secret,
             oauth_issuer=oauth_issuer,
