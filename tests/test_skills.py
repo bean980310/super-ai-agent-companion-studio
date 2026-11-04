@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from src.skills.models import SkillError, load_skill_file, parse_skill_document, slugify_skill_name
-from src.skills.registry import SkillRegistry
+from src.skills.registry import SkillRegistry, default_skill_roots
 from src.skills.tools import (
     LOAD_SKILL_TOOL,
     READ_SKILL_FILE_TOOL,
@@ -71,6 +71,16 @@ def test_slugify_skill_name():
     assert slugify_skill_name("My Skill!") == "my-skill"
     assert slugify_skill_name("  ") == ""
     assert len(slugify_skill_name("a" * 100)) == 64
+
+
+def test_default_roots_include_home_agents(monkeypatch, tmp_path: Path):
+    extra = tmp_path / "extra-skills"
+    monkeypatch.setenv("AI_COMPANION_SKILLS_DIRS", str(extra))
+
+    roots = default_skill_roots()
+    assert roots[0] == extra
+    assert Path.home() / ".agents" / "skills" in roots
+    assert Path.cwd() / ".agents" / "skills" in roots
 
 
 def test_load_skill_file(tmp_path: Path):

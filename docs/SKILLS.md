@@ -42,8 +42,9 @@ Highest priority first:
 
 1. `AI_COMPANION_SKILLS_DIRS` (OS-path-separated list of extra roots)
 2. `~/.ai-companion/skills`
-3. `<project>/skills`
-4. `<project>/.agents/skills`
+3. `~/.agents/skills`
+4. `<project>/skills`
+5. `<project>/.agents/skills`
 
 If two skills share a name, the one from the higher-priority root wins.
 

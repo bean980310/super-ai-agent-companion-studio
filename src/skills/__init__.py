@@ -2,9 +2,10 @@
 """Agent skill discovery, management, and tool-calling support.
 
 Skills are folders containing a ``SKILL.md`` file. They are discovered from
-``~/.ai-companion/skills``, the project ``skills/`` folder, and
-``.agents/skills`` (or ``AI_COMPANION_SKILLS_DIRS``). Only the catalog is sent
-to the model up front; the full instructions are loaded on demand.
+``~/.ai-companion/skills``, ``~/.agents/skills``, the project ``skills/``
+folder, and the project ``.agents/skills`` folder (or
+``AI_COMPANION_SKILLS_DIRS``). Only the catalog is sent to the model up front;
+the full instructions are loaded on demand.
 """
 
 from .models import Skill, SkillError, load_skill_file, parse_skill_document, slugify_skill_name

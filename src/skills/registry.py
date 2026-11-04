@@ -68,6 +68,7 @@ def default_skill_roots() -> List[Path]:
             roots.append(Path(part).expanduser())
 
     roots.append(APPDATA_PATH / "skills")
+    roots.append(Path.home() / ".agents" / "skills")
     roots.append(Path.cwd() / "skills")
     roots.append(Path.cwd() / ".agents" / "skills")
 
@@ -89,7 +90,8 @@ class SkillRegistry:
     Discovery is lazy: the first access scans all roots. ``refresh()`` forces a
     rescan. Enable/disable state is persisted to ``skills.json`` next to the
     application data directory, while the skill files themselves stay in
-    ``~/.ai-companion/skills`` (user) or a project ``skills/`` directory.
+    ``~/.ai-companion/skills`` (user), ``~/.agents/skills`` (shared agent
+    skills), or a project ``skills/`` directory.
     """
 
     def __init__(
@@ -127,6 +129,11 @@ class SkillRegistry:
         try:
             rel = root.resolve().relative_to(Path.cwd().resolve())
             return str(rel) or "."
+        except (OSError, ValueError):
+            pass
+        try:
+            rel = root.resolve().relative_to(Path.home().resolve())
+            return f"~/{rel.as_posix()}"
         except (OSError, ValueError):
             return str(root)
 
