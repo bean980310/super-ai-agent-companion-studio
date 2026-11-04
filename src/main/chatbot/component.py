@@ -82,6 +82,12 @@ class ChatbotComponent:
     mcp_tools_multiselect: Optional[gr.Dropdown] = None
     mcp_tools_refresh_btn: Optional[gr.Button] = None
 
+    skills_toggle: Optional[gr.Checkbox] = None
+    skills_accordion: Optional[gr.Accordion] = None
+    skills_info: Optional[gr.Markdown] = None
+    skills_multiselect: Optional[gr.Dropdown] = None
+    skills_refresh_btn: Optional[gr.Button] = None
+
     @classmethod
     def create_chatbot_side_session_container(cls):
         session_buttons = []
@@ -298,6 +304,25 @@ class ChatbotComponent:
                     )
                     mcp_tools_refresh_btn = gr.Button(_("mcp_tools_refresh_button"), variant="secondary")
 
+                skills_toggle = gr.Checkbox(
+                    label=_("skills_toggle_label"),
+                    value=False,
+                    info=_("skills_toggle_info"),
+                    elem_classes="skills-toggle",
+                )
+                with gr.Accordion(_("skills_manage_title"), open=False, elem_classes="accordion-container") as skills_accordion:
+                    skills_info = gr.Markdown(_("skills_empty"), elem_classes="skills-info")
+                    skills_multiselect = gr.Dropdown(
+                        label=_("skills_select_label"),
+                        choices=[],
+                        value=[],
+                        multiselect=True,
+                        interactive=True,
+                        info=_("skills_select_info"),
+                        elem_classes="skills-multiselect",
+                    )
+                    skills_refresh_btn = gr.Button(_("skills_refresh_button"), variant="secondary")
+
         ui_component.profile_image = profile_image
         ui_component.character_dropdown = character_dropdown
         ui_component.user_persona_dropdown = user_persona_dropdown
@@ -322,6 +347,11 @@ class ChatbotComponent:
         ui_component.mcp_tools_accordion = mcp_tools_accordion
         ui_component.mcp_tools_multiselect = mcp_tools_multiselect
         ui_component.mcp_tools_refresh_btn = mcp_tools_refresh_btn
+        ui_component.skills_toggle = skills_toggle
+        ui_component.skills_accordion = skills_accordion
+        ui_component.skills_info = skills_info
+        ui_component.skills_multiselect = skills_multiselect
+        ui_component.skills_refresh_btn = skills_refresh_btn
 
         return cls(
         profile_image=profile_image,
@@ -348,6 +378,11 @@ class ChatbotComponent:
         mcp_tools_accordion=mcp_tools_accordion,
         mcp_tools_multiselect=mcp_tools_multiselect,
         mcp_tools_refresh_btn=mcp_tools_refresh_btn,
+        skills_toggle=skills_toggle,
+        skills_accordion=skills_accordion,
+        skills_info=skills_info,
+        skills_multiselect=skills_multiselect,
+        skills_refresh_btn=skills_refresh_btn,
     )
 
     @classmethod

@@ -98,6 +98,8 @@ class ChatbotMain:
                 app_state.enable_thinking_state,
                 app_state.mcp_tools_enabled_state,
                 app_state.mcp_selected_tools_state,
+                app_state.skills_enabled_state,
+                app_state.skills_selected_state,
                 app_state.is_temp_session_state,  # For temporary session handling
             ]
 
@@ -146,6 +148,8 @@ class ChatbotMain:
                 app_state.enable_thinking_state,
                 app_state.mcp_tools_enabled_state,
                 app_state.mcp_selected_tools_state,
+                app_state.skills_enabled_state,
+                app_state.skills_selected_state,
                 app_state.is_temp_session_state,  # For temporary session handling
             ]
 

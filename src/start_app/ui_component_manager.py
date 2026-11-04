@@ -94,6 +94,12 @@ class UIComponent:
     mcp_tools_multiselect: Optional[gr.Dropdown] = None
     mcp_tools_refresh_btn: Optional[gr.Button] = None
 
+    skills_toggle: Optional[gr.Checkbox] = None
+    skills_accordion: Optional[gr.Accordion] = None
+    skills_info: Optional[gr.Markdown] = None
+    skills_multiselect: Optional[gr.Dropdown] = None
+    skills_refresh_btn: Optional[gr.Button] = None
+
     status_text: Optional[gr.Markdown] = None
     image_info: Optional[gr.Markdown] = None
     session_select_info: Optional[gr.Markdown] = None

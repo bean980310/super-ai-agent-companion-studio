@@ -9,6 +9,14 @@ from ai_companion_gateway import ToolResult, build_tool_specs_from_mcp, supports
 
 from src.common.custom_providers import CUSTOM_PREFIX
 from src.models.models import DEFAULT_MAX_TOOL_ITERATIONS, generate_answer
+from src.skills.tools import (
+    LOAD_SKILL_TOOL,
+    READ_SKILL_FILE_TOOL,
+    SKILL_SERVER_NAME,
+    build_skill_executor,
+    build_skill_prompt,
+    build_skill_tool_specs,
+)
 
 from .client.manager import MCPClientManager, get_mcp_client_manager
 from .client.models import MCPToolResult
@@ -36,6 +44,10 @@ def supports_mcp_tools(provider: str) -> bool:
     return supports_openai_tools(provider)
 
 
+# Skills use the same tool-calling path as MCP tools.
+supports_tool_calling = supports_mcp_tools
+
+
 def _mcp_result_to_tool_result(result: MCPToolResult) -> ToolResult:
     return ToolResult(
         success=result.success,
@@ -53,6 +65,26 @@ def _make_executor(manager: MCPClientManager):
     return executor
 
 
+def _is_skill_tool(tool_name: str) -> bool:
+    if tool_name.startswith(f"{SKILL_SERVER_NAME}__"):
+        return True
+    return tool_name in (LOAD_SKILL_TOOL, READ_SKILL_FILE_TOOL)
+
+
+def _make_combined_executor(manager: Optional[MCPClientManager], skill_executor):
+    """Dispatch skill tools locally and everything else to MCP."""
+    mcp_executor = _make_executor(manager) if manager is not None else None
+
+    def executor(tool_name: str, arguments: Dict[str, Any]) -> ToolResult:
+        if skill_executor is not None and _is_skill_tool(tool_name):
+            return skill_executor(tool_name, arguments)
+        if mcp_executor is None:
+            return ToolResult(success=False, error=f"Unknown tool: {tool_name}")
+        return mcp_executor(tool_name, arguments)
+
+    return executor
+
+
 def _select_tools(manager: MCPClientManager, tool_names: Optional[List[str]]) -> List[Any]:
     all_tools = manager.list_tools()
     if tool_names:
@@ -61,18 +93,19 @@ def _select_tools(manager: MCPClientManager, tool_names: Optional[List[str]]) ->
     return all_tools
 
 
-def _inject_tool_hint(history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _inject_tool_hint(history: List[Dict[str, Any]], hint: Optional[str] = None) -> List[Dict[str, Any]]:
     """시스템 메시지에 tool 사용 힌트를 추가한다 (원본은 변경하지 않음)."""
+    hint = hint or _TOOL_USAGE_HINT
     history = [dict(msg) for msg in history]
     if history and history[0].get("role") == "system":
         content = history[0].get("content", "")
         if isinstance(content, list):
-            content = list(content) + [{"type": "text", "text": _TOOL_USAGE_HINT}]
+            content = list(content) + [{"type": "text", "text": hint}]
         else:
-            content = f"{content}\n\n{_TOOL_USAGE_HINT}" if content else _TOOL_USAGE_HINT
+            content = f"{content}\n\n{hint}" if content else hint
         history[0]["content"] = content
     else:
-        history.insert(0, {"role": "system", "content": _TOOL_USAGE_HINT})
+        history.insert(0, {"role": "system", "content": hint})
     return history
 
 
@@ -101,13 +134,16 @@ def run_tool_agent(
     character_language: str = "ko",
     max_iterations: int = MAX_TOOL_ITERATIONS,
     manager: Optional[MCPClientManager] = None,
+    mcp_tools_enabled: bool = True,
+    skills_enabled: bool = False,
+    skill_names: Optional[List[str]] = None,
 ) -> str:
     """
-    Run the model with MCP tools.
+    Run the model with MCP tools and/or agent skills.
 
-    ``models.generate_answer``와 동일한 파라미터를 받아, MCP 도구를
-    tool_specs/tool_executor로 붙여 실행한다. 모델 로드·캐시·샘플링 설정은
-    models 계층이 단일 책임으로 처리한다.
+    ``models.generate_answer``와 동일한 파라미터를 받아, MCP 도구와 에이전트
+    스킬 도구를 tool_specs/tool_executor로 붙여 실행한다. 모델 로드·캐시·샘플링
+    설정은 models 계층이 단일 책임으로 처리한다.
 
     Args:
         history: Conversation history in the app's internal message format.
@@ -135,20 +171,43 @@ def run_tool_agent(
         character_language: Output language hint.
         max_iterations: Safety cap on tool-calling rounds.
         manager: Optional MCP client manager (defaults to the global one).
+        mcp_tools_enabled: Expose MCP tools (default True for backwards compatibility).
+        skills_enabled: Expose enabled agent skills through the skill tools.
+        skill_names: Optional subset of skill names. Empty/None means all enabled skills.
 
     Returns:
         The assistant's final text answer (already stripped).
     """
     manager = manager or get_mcp_client_manager()
 
-    tools = _select_tools(manager, tool_names)
-    if not tools:
-        raise RuntimeError("No MCP tools are available. Connect an MCP server and select tools.")
+    mcp_tools = _select_tools(manager, tool_names) if mcp_tools_enabled else []
+    tool_specs = build_tool_specs_from_mcp(mcp_tools)
 
-    tool_specs = build_tool_specs_from_mcp(tools)
+    skill_specs = []
+    skill_executor = None
+    if skills_enabled:
+        skill_specs = build_skill_tool_specs(names=skill_names)
+        if skill_specs:
+            skill_executor = build_skill_executor(names=skill_names)
+            tool_specs.extend(skill_specs)
+
+    if not tool_specs:
+        raise RuntimeError(
+            "No tools are available. Connect an MCP server and select tools, or enable at least one agent skill."
+        )
+
+    hints: List[str] = []
+    if mcp_tools:
+        hints.append(_TOOL_USAGE_HINT)
+    if skill_specs:
+        skill_prompt = build_skill_prompt(names=skill_names)
+        if skill_prompt:
+            hints.append(skill_prompt)
+
+    executor = _make_combined_executor(manager if mcp_tools else None, skill_executor)
 
     return generate_answer(
-        history=_inject_tool_hint(history),
+        history=_inject_tool_hint(history, "\n\n".join(hints)),
         selected_model=selected_model,
         provider=provider,
         model_type=model_type,
@@ -169,7 +228,7 @@ def run_tool_agent(
         enable_thinking=enable_thinking,
         enable_streaming=enable_streaming,
         tool_specs=tool_specs,
-        tool_executor=_make_executor(manager),
+        tool_executor=executor,
         max_tool_iterations=max_iterations,
         character_language=character_language,
     )

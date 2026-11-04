@@ -52,6 +52,10 @@ with gr.Blocks() as demo:
         app_state.mcp_tools_enabled_state = gr.State(False)
         app_state.mcp_selected_tools_state = gr.State([])
 
+        # Agent skill state
+        app_state.skills_enabled_state = gr.State(False)
+        app_state.skills_selected_state = gr.State([])
+
         # We also need these if they were formerly global
         # selected_language_state is GLOBAL (in app.py)
         # selected_device_state is GLOBAL (in app.py)
@@ -146,6 +150,11 @@ with gr.Blocks() as demo:
     mcp_tools_toggle = chat_container_obj.side_panel.mcp_tools_toggle
     mcp_tools_multiselect = chat_container_obj.side_panel.mcp_tools_multiselect
     mcp_tools_refresh_btn = chat_container_obj.side_panel.mcp_tools_refresh_btn
+
+    skills_toggle = chat_container_obj.side_panel.skills_toggle
+    skills_info = chat_container_obj.side_panel.skills_info
+    skills_multiselect = chat_container_obj.side_panel.skills_multiselect
+    skills_refresh_btn = chat_container_obj.side_panel.skills_refresh_btn
 
     # Modals from chat_bot (these were in create_main_container)
     reset_modal, single_reset_content, all_reset_content, cancel_btn, confirm_btn = chat_bot.create_reset_confirm_modal()
@@ -354,6 +363,25 @@ with gr.Blocks() as demo:
     mcp_tools_multiselect.change(fn=lambda tools: tools or [], inputs=[mcp_tools_multiselect], outputs=[app_state.mcp_selected_tools_state])
     mcp_tools_refresh_btn.click(fn=refresh_mcp_tools, inputs=[], outputs=[mcp_tools_multiselect, app_state.mcp_selected_tools_state])
     demo.load(fn=refresh_mcp_tools, inputs=[], outputs=[mcp_tools_multiselect, app_state.mcp_selected_tools_state])
+
+    # Agent skills
+    def refresh_skills():
+        from src.skills import get_skill_registry
+
+        registry = get_skill_registry()
+        registry.refresh()
+        all_skills = registry.list_skills()
+        enabled = [s.name for s in all_skills if registry.is_enabled(s.name)]
+        if not all_skills:
+            info = _("skills_empty")
+        else:
+            info = _("skills_info_summary", enabled=len(enabled), total=len(all_skills))
+        return gr.update(choices=enabled, value=[]), enabled, info
+
+    skills_toggle.change(fn=lambda v: v if v is True else False, inputs=[skills_toggle], outputs=[app_state.skills_enabled_state])
+    skills_multiselect.change(fn=lambda skills: skills or [], inputs=[skills_multiselect], outputs=[app_state.skills_selected_state])
+    skills_refresh_btn.click(fn=refresh_skills, inputs=[], outputs=[skills_multiselect, app_state.skills_selected_state, skills_info])
+    demo.load(fn=refresh_skills, inputs=[], outputs=[skills_multiselect, app_state.skills_selected_state, skills_info])
 
     # Preset & Character
     character_dropdown.change(fn=chat_bot.update_system_message_and_profile, inputs=[character_dropdown, header.language_dropdown, app_state.session_id_state], outputs=[system_message_box, profile_image, preset_dropdown])

@@ -23,7 +23,7 @@ from src.models.gateway_model_catalog import (
 from src.common.database import save_chat_history_db, delete_session_history, delete_all_sessions, get_preset_choices, load_system_presets, get_existing_sessions, get_existing_sessions_with_names, update_session_name, load_chat_from_db, update_system_message_in_db, update_last_character_in_db
 from src.common.memory import add_memory, build_memory_context, is_memory_enabled, set_memory_enabled, get_all_memories, clear_character_memories
 from src.common.translations import translation_manager, _
-from src.mcp.agent import run_tool_agent, supports_mcp_tools
+from src.mcp.agent import run_tool_agent, supports_tool_calling
 
 from src.characters.preset_images import PRESET_IMAGES
 from src.characters.card_registry import get_character_lorebook_context
@@ -396,6 +396,8 @@ class Chatbot:
         enable_thinking: bool,
         mcp_tools_enabled: bool = False,
         mcp_selected_tools: list | None = None,
+        skills_enabled: bool = False,
+        skills_selected: list | None = None,
         is_temp_session=False,
     ):
         """
@@ -561,19 +563,28 @@ class Chatbot:
                 }
 
         try:
-            # MCP 도구 사용이 켜져 있고 provider가 지원하면 tool-calling 에이전트 사용
-            use_mcp_agent = bool(mcp_tools_enabled) and supports_mcp_tools(provider)
-            if mcp_tools_enabled and not use_mcp_agent:
-                logger.warning(f"Provider '{provider}' does not support MCP tool calling; falling back to normal generation.")
+            # MCP 도구 / 에이전트 스킬 사용이 켜져 있고 provider가 지원하면 tool-calling 에이전트 사용
+            provider_supports_tools = supports_tool_calling(provider)
+            use_mcp_agent = bool(mcp_tools_enabled) and provider_supports_tools
+            use_skill_agent = bool(skills_enabled) and provider_supports_tools
+            use_tool_agent = use_mcp_agent or use_skill_agent
 
-            if use_mcp_agent:
+            if (mcp_tools_enabled or skills_enabled) and not provider_supports_tools:
+                logger.warning(
+                    f"Provider '{provider}' does not support tool calling; falling back to normal generation."
+                )
+
+            if use_tool_agent:
                 try:
                     answer = run_tool_agent(
                         history=memory_history,
                         selected_model=selected_model,
                         provider=provider,
                         api_key=api_key,
-                        tool_names=mcp_selected_tools,
+                        tool_names=mcp_selected_tools if use_mcp_agent else None,
+                        mcp_tools_enabled=use_mcp_agent,
+                        skills_enabled=use_skill_agent,
+                        skill_names=skills_selected if use_skill_agent else None,
                         model_type=model_type,
                         selected_lora=selected_lora if selected_lora != "None" else None,
                         local_model_path=custom_path if selected_model == "사용자 지정 모델 경로 변경" else None,
@@ -589,11 +600,11 @@ class Chatbot:
                         character_language=language,
                     )
                 except RuntimeError as e:
-                    # 도구가 없거나 연결되지 않은 경우 일반 생성으로 폴백
-                    logger.warning(f"MCP agent unavailable, falling back to normal generation: {e}")
-                    use_mcp_agent = False
+                    # 도구/스킬이 없거나 연결되지 않은 경우 일반 생성으로 폴백
+                    logger.warning(f"Tool agent unavailable, falling back to normal generation: {e}")
+                    use_tool_agent = False
 
-            if not use_mcp_agent:
+            if not use_tool_agent:
                 answer = generate_answer(
                     history=memory_history,
                     selected_model=selected_model,

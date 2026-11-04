@@ -47,6 +47,10 @@ class AppState:
     mcp_tools_enabled_state: gr.State | None = None
     mcp_selected_tools_state: gr.State | None = None
 
+    # Agent skill state
+    skills_enabled_state: gr.State | None = None
+    skills_selected_state: gr.State | None = None
+
     max_diffusion_lora_rows: int | None = None
     stored_image: gr.State | None = None
     stored_image_inpaint: gr.State | None = None
