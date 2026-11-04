@@ -56,6 +56,45 @@ _TEXT_SUFFIXES = {
     ".gitignore",
 }
 
+# Directories that are never scanned for skills. Hidden directories are also
+# skipped; skill folders themselves use plain lowercase names.
+_SKIP_DIR_NAMES = {
+    "node_modules",
+    "__pycache__",
+    "venv",
+    "env",
+    "dist",
+    "build",
+    "site-packages",
+    "target",
+    ".git",
+    ".hg",
+    ".svn",
+    ".venv",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".tox",
+}
+
+
+def iter_skill_files(root: Path):
+    """Yield ``SKILL.md`` paths under ``root``, recursively and top-down.
+
+    A directory containing ``SKILL.md`` is treated as a skill and is not
+    descended into, so bundled reference material cannot register as a nested
+    skill. Hidden directories and common dependency/build folders are skipped.
+    """
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames[:] = sorted(
+            name
+            for name in dirnames
+            if not name.startswith(".") and name not in _SKIP_DIR_NAMES
+        )
+        if SKILL_FILE_NAME in filenames:
+            yield Path(dirpath) / SKILL_FILE_NAME
+            dirnames[:] = []
+
 
 def default_skill_roots() -> List[Path]:
     """Return the default skill search roots, highest priority first."""
@@ -87,11 +126,12 @@ def default_skill_roots() -> List[Path]:
 class SkillRegistry:
     """Filesystem-backed registry of agent skills.
 
-    Discovery is lazy: the first access scans all roots. ``refresh()`` forces a
-    rescan. Enable/disable state is persisted to ``skills.json`` next to the
-    application data directory, while the skill files themselves stay in
-    ``~/.ai-companion/skills`` (user), ``~/.agents/skills`` (shared agent
-    skills), or a project ``skills/`` directory.
+    Discovery is lazy: the first access recursively scans all roots.
+    ``refresh()`` forces a rescan. Enable/disable state is persisted to
+    ``skills.json`` next to the application data directory, while the skill
+    files themselves stay in ``~/.ai-companion/skills`` (user),
+    ``~/.agents/skills`` (shared agent skills), or a project ``skills/``
+    directory.
     """
 
     def __init__(
@@ -138,7 +178,7 @@ class SkillRegistry:
             return str(root)
 
     def refresh(self) -> List[Skill]:
-        """Rescan all roots and return the discovered skills."""
+        """Rescan all roots recursively and return the discovered skills."""
         with self._lock:
             self._load_config()
             skills: Dict[str, Skill] = {}
@@ -147,12 +187,7 @@ class SkillRegistry:
                 if not root.is_dir():
                     continue
                 label = self._source_label(root)
-                for entry in sorted(root.iterdir(), key=lambda p: p.name.lower()):
-                    if not entry.is_dir():
-                        continue
-                    skill_file = entry / SKILL_FILE_NAME
-                    if not skill_file.is_file():
-                        continue
+                for skill_file in iter_skill_files(root):
                     try:
                         skill = load_skill_file(skill_file, source=label)
                     except SkillError as exc:

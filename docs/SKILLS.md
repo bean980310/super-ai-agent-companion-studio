@@ -48,6 +48,12 @@ Highest priority first:
 
 If two skills share a name, the one from the higher-priority root wins.
 
+Each root is searched recursively, so skills can be grouped in subfolders
+(for example `skills/coding/review/SKILL.md`). A directory containing
+`SKILL.md` is treated as a skill and is not searched further, and hidden
+directories plus common dependency/build folders (`node_modules`, `venv`,
+`__pycache__`, `dist`, `build`, ...) are skipped.
+
 The repository ships one example skill in `skills/skill-creator/`.
 
 ## Using skills

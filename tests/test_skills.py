@@ -110,6 +110,46 @@ def test_registry_discovery_and_priority(tmp_path: Path):
     assert skills["shared"].source == "user"
 
 
+def test_registry_discovers_nested_skills(tmp_path: Path):
+    user_root = tmp_path / "user"
+    write_skill(user_root, "top-level")
+    nested = user_root / "category" / "subcategory" / "nested-skill"
+    nested.mkdir(parents=True)
+    (nested / "SKILL.md").write_text(
+        "---\nname: nested-skill\ndescription: Nested skill.\n---\n\n# Nested\n",
+        encoding="utf-8",
+    )
+
+    registry = SkillRegistry(roots=[user_root], user_root=user_root, config_path=tmp_path / "skills.json")
+    names = [skill.name for skill in registry.list_skills()]
+    assert names == ["nested-skill", "top-level"]
+
+
+def test_registry_does_not_descend_into_skill_folder(tmp_path: Path):
+    user_root = tmp_path / "user"
+    outer = write_skill(user_root, "outer")
+    inner = outer / "examples" / "inner"
+    inner.mkdir(parents=True)
+    (inner / "SKILL.md").write_text(
+        "---\nname: inner\ndescription: Should not be discovered.\n---\n",
+        encoding="utf-8",
+    )
+
+    registry = SkillRegistry(roots=[user_root], user_root=user_root, config_path=tmp_path / "skills.json")
+    assert [skill.name for skill in registry.list_skills()] == ["outer"]
+
+
+def test_registry_skips_hidden_and_dependency_dirs(tmp_path: Path):
+    user_root = tmp_path / "user"
+    write_skill(user_root, "visible")
+    write_skill(user_root / ".hidden", "hidden-skill")
+    write_skill(user_root / "node_modules" / "pkg", "dependency-skill")
+    write_skill(user_root / "venv" / "lib", "venv-skill")
+
+    registry = SkillRegistry(roots=[user_root], user_root=user_root, config_path=tmp_path / "skills.json")
+    assert [skill.name for skill in registry.list_skills()] == ["visible"]
+
+
 def test_enable_disable_persists(tmp_path: Path):
     user_root = tmp_path / "user"
     write_skill(user_root, "alpha")
