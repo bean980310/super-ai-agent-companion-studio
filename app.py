@@ -58,6 +58,17 @@ logger.info(f"Detected OS: {os_name}, Architecture: {arch}")
 # because page construction typically reads initial state from app_state.
 load_initial_data()
 
+# Plugins: discover manifests, then import only the plugins the user approved.
+# This must run before pages are imported, because plugins contribute pages and
+# settings tabs that are rendered while pages are constructed.
+from src.plugins import get_plugin_registry
+
+plugin_registry = get_plugin_registry()
+plugin_registry.refresh()
+plugin_registry.load_approved()
+for _plugin_router in plugin_registry.api_routers():
+    app.include_router(_plugin_router)
+
 # Import Pages
 from src.pages import header
 from src.pages import (
@@ -133,48 +144,42 @@ with gr.Blocks(title="Super AI Agent Companion", fill_height=True, fill_width=Tr
     initialize_global_state()
     header.demo.render()
 
-    interface_list = [
-        chat.demo,
-        image_gen.demo,
-        storyteller.demo,
-        companion.demo,
-        video_gen.demo,
-        audio.demo,
-        translator.demo,
-        mcp_client.demo,
-        download.demo,
-        mcp_tools.demo,
+    builtin_pages = [
+        ("chat", "Chat", chat.demo),
+        ("image_gen", "Image Gen", image_gen.demo),
+        ("story", "Storyteller", storyteller.demo),
+        ("companion", "Companion", companion.demo),
+        ("video_gen", "Video Gen", video_gen.demo),
+        ("audio", "Audio", audio.demo),
+        ("translate", "Translator", translator.demo),
+        ("mcp_client", "MCP Client", mcp_client.demo),
+        ("download", "Download", download.demo),
+        ("mcp_tools", "MCP Tools", mcp_tools.demo),
     ]
-    interface_names = [
-        "Chat",
-        "Image Gen",
-        "Storyteller",
-        "Companion",
-        "Video Gen",
-        "Audio",
-        "Translator",
-        "MCP Client",
-        "Download",
-        "MCP Tools",
-    ]
-    interface_ids = [
-        "chat",
-        "image_gen",
-        "story",
-        "companion",
-        "video_gen",
-        "audio",
-        "translate",
-        "mcp_client",
-        "download",
-        "mcp_tools",
-    ]
-    menu_data = [{"type": "item", "id": id, "label": name} for id, name in zip(interface_ids, interface_names)]
-    menu = SidebarMenu(menu_data=menu_data, value=interface_ids[0], open=True, position="left")
+
+    # Plugin pages join the same sidebar/tab list as the built-in pages.
+    pages = list(builtin_pages)
+    seen_page_ids = {page_id for page_id, _label, _target in pages}
+    for plugin_page in plugin_registry.pages():
+        if plugin_page.id in seen_page_ids:
+            logger.warning(
+                f"Plugin page id '{plugin_page.id}' collides with an existing page; skipping"
+            )
+            continue
+        seen_page_ids.add(plugin_page.id)
+        pages.append((plugin_page.id, plugin_page.label, plugin_page.builder))
+
+    menu_data = [{"type": "item", "id": page_id, "label": label} for page_id, label, _target in pages]
+    menu = SidebarMenu(menu_data=menu_data, value=pages[0][0], open=True, position="left")
     with gr.Tabs():
-        for interface, name in zip(interface_list, interface_names):
-            with gr.TabItem(name):
-                interface.render()
+        for _page_id, label, target in pages:
+            with gr.TabItem(label):
+                # Built-in pages expose a rendered gr.Blocks; plugin builders
+                # draw their components into the current tab context.
+                if hasattr(target, "render"):
+                    target.render()
+                else:
+                    target()
 
     # Settings Popup
     with gr.Column(visible=False, elem_classes="settings-popup") as settings_popup:

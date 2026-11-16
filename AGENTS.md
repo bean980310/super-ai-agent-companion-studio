@@ -33,6 +33,24 @@ Recent history favors short, imperative subjects such as `Fix AttributeError...`
 
 Do not commit secrets, model weights, local databases, or generated outputs. Runtime configuration is created under `~/.ai-companion/.env`; keep machine-specific values there, not in tracked files.
 
+## Plugins
+
+New features belong in `plugins/<id>/` instead of `src/`. A plugin is a folder
+with a `plugin.toml` manifest and a module exposing `register(api)`.
+
+- Discovery roots: `$AI_COMPANION_PLUGINS_DIRS`, `~/.ai-companion/plugins`
+  (where `git clone` installs), then `./plugins`.
+- `src/plugins/` is the host side: manifest parsing, approval store, import.
+- Only approved plugins are imported. Approvals live in
+  `~/.ai-companion/plugins.json` and are bound to a source fingerprint, so
+  changed code has to be approved again.
+- Extension points: `api.register_page`, `api.register_settings_tab`,
+  `api.register_api_route`. Page builders draw into the host `gr.TabItem`.
+- Built-in pages in `src/pages/` stay as they are; do not migrate them.
+- Tests: `tests/test_plugins.py`. Reference plugin: `plugins/example-hello`.
+- Approving or enabling a plugin takes effect after a restart, because Gradio
+  tabs are built once at startup.
+
 ## Long-Term Memory (mem0)
 
 Chatbot long-term memory lives in `src/common/memory.py` and is wired into the chat flow in `src/main/chatbot/chatbot.py` (`chat_wrapper` and `process_message_bot`). Before generating a reply it injects relevant memories into the system message; after a successful exchange it stores the turn. Memories are namespaced per character (persona) via mem0's `user_id`.

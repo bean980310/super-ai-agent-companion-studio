@@ -51,3 +51,9 @@ main.py
 node_modules/
 
 logs/
+
+# Plugins cloned into the checkout. Installed plugins live in
+# ~/.ai-companion/plugins; only the reference plugin is tracked here.
+/plugins/*
+!/plugins/README.md
+!/plugins/example-hello/

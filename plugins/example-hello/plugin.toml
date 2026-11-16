@@ -1,0 +1,9 @@
+[plugin]
+id = "example-hello"
+name = "Example: Hello"
+version = "0.1.0"
+entrypoint = "plugin:register"
+api_version = 1
+description = "Reference plugin showing how to add a page and a settings tab."
+author = "ai-companion"
+order = 900

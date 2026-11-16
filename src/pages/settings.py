@@ -1,20 +1,25 @@
 import gradio as gr
 
+from src.main.chatbot import chat_bot
+from src.plugins import get_plugin_registry
 from src.start_app import ui_component
 from src.tabs.cache_tab import create_cache_tab
-from src.tabs.util_tab import create_util_tab
+from src.tabs.device_setting import create_device_setting_tab
 from src.tabs.setting_tab_custom_model import create_custom_model_tab
 from src.tabs.setting_tab_custom_provider import create_custom_provider_tab
-from src.tabs.setting_tab_preset import create_system_preset_management_tab
-from src.tabs.setting_tab_persona import create_persona_management_tab, refresh_card_dropdowns
-from src.tabs.setting_tab_save_history import create_save_history_tab
-from src.tabs.setting_tab_load_history import create_load_history_tab
-from src.tabs.setting_tab_session_manager import create_session_management_tab
-from src.tabs.device_setting import create_device_setting_tab
-from src.tabs.setting_tab_lorebook import create_lorebook_tab
-from src.tabs.setting_tab_skill import create_skill_management_tab
-from src.main.chatbot import chat_bot
 from src.tabs.setting_tab_info import create_custom_gpu_monitor
+from src.tabs.setting_tab_load_history import create_load_history_tab
+from src.tabs.setting_tab_lorebook import create_lorebook_tab
+from src.tabs.setting_tab_persona import (
+    create_persona_management_tab,
+    refresh_card_dropdowns,
+)
+from src.tabs.setting_tab_plugin import create_plugin_management_tab
+from src.tabs.setting_tab_preset import create_system_preset_management_tab
+from src.tabs.setting_tab_save_history import create_save_history_tab
+from src.tabs.setting_tab_session_manager import create_session_management_tab
+from src.tabs.setting_tab_skill import create_skill_management_tab
+from src.tabs.util_tab import create_util_tab
 
 head_html = """<script src="https://unpkg.com/lucide@latest"></script>"""
 
@@ -37,6 +42,11 @@ with gr.Blocks() as demo:
                 create_persona_management_tab()
                 create_lorebook_tab()
                 create_skill_management_tab(demo)
+                create_plugin_management_tab(demo)
+                # 플러그인이 제공하는 설정 탭
+                for plugin_tab in get_plugin_registry().settings_tabs():
+                    with gr.Tab(plugin_tab.label):
+                        plugin_tab.builder()
                 # 프리셋 Dropdown 초기화 (Wire this event here)
                 demo.load(fn=chat_bot.initial_load_presets, inputs=[], outputs=[ui_component.text_preset_dropdown], queue=False)
 
