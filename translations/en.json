@@ -230,5 +230,17 @@
   "plugin_clone_success": "Installed plugin '{name}'.",
   "plugin_select_required": "Select a plugin first.",
   "plugin_clone_url_required": "Enter a repository URL.",
-  "plugin_error_label": "Error details"
+  "plugin_error_label": "Error details",
+  "skill_col_characters": "Characters",
+  "skill_characters_global": "All",
+  "skill_scope_title": "Character-specific skills",
+  "skill_scope_info": "Choose which characters may use a skill. Leave the selection empty to make it available to every character.",
+  "skill_scope_skill_label": "Skill",
+  "skill_scope_characters_label": "Characters",
+  "skill_scope_save_button": "Save scope",
+  "skill_scope_select_skill": "Select a skill to scope.",
+  "skill_scope_saved": "Saved the character scope for '{name}'.",
+  "skill_characters_label": "Characters (optional)",
+  "skill_characters_info": "Leave empty to make the skill available to every character.",
+  "skills_info_summary_character": "{enabled} available / {total} total skills (current character)"
 }

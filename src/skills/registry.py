@@ -17,8 +17,10 @@ from src.common.apppath import APPDATA_PATH
 from .models import (
     Skill,
     SkillError,
+    character_matches,
     is_valid_skill_name,
     load_skill_file,
+    normalize_characters,
     slugify_skill_name,
 )
 
@@ -150,6 +152,7 @@ class SkillRegistry:
 
         self._skills: Dict[str, Skill] = {}
         self._disabled: set[str] = set()
+        self._character_overrides: Dict[str, List[str]] = {}
         self._loaded = False
         self._lock = threading.RLock()
 
@@ -216,20 +219,33 @@ class SkillRegistry:
     # ------------------------------------------------------------------
     def _load_config(self) -> None:
         disabled: set[str] = set()
+        character_overrides: Dict[str, List[str]] = {}
         try:
             if self.config_path.is_file():
                 data = json.loads(self.config_path.read_text(encoding="utf-8"))
-                raw = data.get("disabled", []) if isinstance(data, dict) else []
-                if isinstance(raw, list):
-                    disabled = {str(name) for name in raw}
+                if isinstance(data, dict):
+                    raw = data.get("disabled", [])
+                    if isinstance(raw, list):
+                        disabled = {str(name) for name in raw}
+                    raw_characters = data.get("characters", {})
+                    if isinstance(raw_characters, dict):
+                        for name, value in raw_characters.items():
+                            character_overrides[str(name)] = normalize_characters(value)
         except Exception as exc:
             logger.warning(f"Failed to read skill config {self.config_path}: {exc}")
         self._disabled = disabled
+        self._character_overrides = character_overrides
 
     def _save_config(self) -> None:
         try:
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
-            payload = {"disabled": sorted(self._disabled)}
+            payload = {
+                "disabled": sorted(self._disabled),
+                "characters": {
+                    name: list(characters)
+                    for name, characters in sorted(self._character_overrides.items())
+                },
+            }
             self.config_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception as exc:
             logger.warning(f"Failed to write skill config {self.config_path}: {exc}")
@@ -245,18 +261,62 @@ class SkillRegistry:
                 return skills
             return [skill for skill in skills if skill.name not in self._disabled]
 
-    def enabled_skills(self, names: Optional[Iterable[str]] = None) -> List[Skill]:
-        """Return enabled skills, optionally filtered by ``names``.
+    def enabled_skills(
+        self,
+        names: Optional[Iterable[str]] = None,
+        character: Optional[str] = None,
+    ) -> List[Skill]:
+        """Return enabled skills, optionally filtered by name and character.
 
-        An empty/``None`` selection means "all enabled skills".
+        An empty/``None`` ``names`` selection means "all enabled skills".
+        A global skill (no character scope) is available to every character;
+        a character-scoped skill is only returned when ``character`` matches.
         """
         with self._lock:
             self._ensure_loaded()
             skills = [s for s in self._sorted_skills() if s.name not in self._disabled]
+            if character:
+                skills = [s for s in skills if self.skill_matches_character(s.name, character)]
             selected = {str(n) for n in names} if names else set()
             if selected:
                 skills = [s for s in skills if s.name in selected]
             return skills
+
+    def skill_characters(self, name: str) -> List[str]:
+        """Return the effective character scope for a skill.
+
+        An app-managed override (set in the Skills settings tab) takes
+        precedence over the ``characters`` frontmatter. An empty list means the
+        skill is global.
+        """
+        with self._lock:
+            self._ensure_loaded()
+            name = str(name)
+            if name in self._character_overrides:
+                return list(self._character_overrides[name])
+            skill = self._skills.get(name)
+            return list(skill.characters) if skill else []
+
+    def set_skill_characters(self, name: str, characters: Optional[Iterable[str]]) -> List[str]:
+        """Persist a character scope override for a skill."""
+        with self._lock:
+            self._ensure_loaded()
+            name = str(name)
+            if name not in self._skills:
+                raise SkillError(f"Unknown skill: {name}")
+            normalized = normalize_characters(characters)
+            self._character_overrides[name] = normalized
+            self._save_config()
+            return list(normalized)
+
+    def skill_matches_character(self, name: str, character: Optional[str]) -> bool:
+        """Whether the skill is available while chatting as ``character``."""
+        if not character:
+            return True
+        characters = self.skill_characters(name)
+        if not characters:
+            return True
+        return any(character_matches(value, character) for value in characters)
 
     def get(self, name: str) -> Optional[Skill]:
         with self._lock:
@@ -369,8 +429,12 @@ class SkillRegistry:
     # ------------------------------------------------------------------
     # Catalog / prompt
     # ------------------------------------------------------------------
-    def build_catalog(self, names: Optional[Iterable[str]] = None) -> str:
-        skills = self.enabled_skills(names)
+    def build_catalog(
+        self,
+        names: Optional[Iterable[str]] = None,
+        character: Optional[str] = None,
+    ) -> str:
+        skills = self.enabled_skills(names, character=character)
         if not skills:
             return ""
         lines = [
@@ -387,8 +451,18 @@ class SkillRegistry:
     # ------------------------------------------------------------------
     # Mutations (UI helpers)
     # ------------------------------------------------------------------
-    def create_skill(self, name: str, description: str, instructions: str) -> Skill:
-        """Create a new skill under the user skill root."""
+    def create_skill(
+        self,
+        name: str,
+        description: str,
+        instructions: str,
+        characters: Optional[Iterable[str]] = None,
+    ) -> Skill:
+        """Create a new skill under the user skill root.
+
+        ``characters`` optionally scopes the skill to specific character display
+        names. An empty scope makes the skill global.
+        """
         slug = slugify_skill_name(name)
         if not is_valid_skill_name(slug):
             raise SkillError("Skill names must use lowercase letters, digits, '-' or '_'")
@@ -402,8 +476,20 @@ class SkillRegistry:
             raise SkillError("A skill description is required")
 
         body = str(instructions or "").strip() or f"# {slug}\n\nDescribe how to perform this task."
+        scope = normalize_characters(characters)
+
+        frontmatter = [
+            "---",
+            f"name: {slug}",
+            f"description: {json.dumps(description, ensure_ascii=False)}",
+        ]
+        if scope:
+            frontmatter.append("characters:")
+            frontmatter.extend(f"  - {json.dumps(character, ensure_ascii=False)}" for character in scope)
+        frontmatter.extend(["---", ""])
+
         destination.mkdir(parents=True, exist_ok=False)
-        content = f"---\nname: {slug}\ndescription: {description}\n---\n\n{body}\n"
+        content = "\n".join(frontmatter) + f"\n{body}\n"
         (destination / SKILL_FILE_NAME).write_text(content, encoding="utf-8")
 
         self.refresh()
@@ -467,6 +553,7 @@ class SkillRegistry:
 
         shutil.rmtree(skill_dir)
         self._disabled.discard(skill.name)
+        self._character_overrides.pop(skill.name, None)
         self._save_config()
         self.refresh()
 

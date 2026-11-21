@@ -20,21 +20,27 @@ LOAD_SKILL_TOOL = "load_skill"
 READ_SKILL_FILE_TOOL = "read_skill_file"
 
 
-def _skill_names(registry: SkillRegistry, names: Optional[Iterable[str]]) -> List[str]:
-    return [skill.name for skill in registry.enabled_skills(names)]
+def _skill_names(
+    registry: SkillRegistry,
+    names: Optional[Iterable[str]],
+    character: Optional[str] = None,
+) -> List[str]:
+    return [skill.name for skill in registry.enabled_skills(names, character=character)]
 
 
 def build_skill_tool_specs(
     registry: Optional[SkillRegistry] = None,
     names: Optional[Iterable[str]] = None,
+    character: Optional[str] = None,
 ) -> List[ToolSpec]:
     """Build tool specs for the currently enabled skills.
 
+    ``character`` filters character-scoped skills to the selected character.
     Returns an empty list when no skill is enabled so callers can fall back to
     normal generation without exposing unusable tools.
     """
     registry = registry or get_skill_registry()
-    available = _skill_names(registry, names)
+    available = _skill_names(registry, names, character)
     if not available:
         return []
 
@@ -91,14 +97,15 @@ def _short_tool_name(tool_name: str) -> str:
 def build_skill_executor(
     registry: Optional[SkillRegistry] = None,
     names: Optional[Iterable[str]] = None,
+    character: Optional[str] = None,
 ):
     """Build an executor for the skill tools.
 
     Only skills that were exposed to the model are callable, so a model cannot
-    reach a disabled skill by guessing its name.
+    reach a disabled or wrong-character skill by guessing its name.
     """
     registry = registry or get_skill_registry()
-    allowed = set(_skill_names(registry, names))
+    allowed = set(_skill_names(registry, names, character))
 
     def executor(tool_name: str, arguments: Dict[str, Any]) -> ToolResult:
         short_name = _short_tool_name(tool_name)
@@ -130,7 +137,8 @@ def build_skill_executor(
 def build_skill_prompt(
     registry: Optional[SkillRegistry] = None,
     names: Optional[Iterable[str]] = None,
+    character: Optional[str] = None,
 ) -> str:
     """Return the skill catalog injected into the system prompt."""
     registry = registry or get_skill_registry()
-    return registry.build_catalog(names)
+    return registry.build_catalog(names, character=character)

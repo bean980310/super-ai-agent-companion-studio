@@ -229,5 +229,17 @@
   "plugin_clone_success": "已安装插件“{name}”。",
   "plugin_select_required": "请先选择插件。",
   "plugin_clone_url_required": "请输入仓库 URL。",
-  "plugin_error_label": "错误详情"
+  "plugin_error_label": "错误详情",
+  "skill_col_characters": "角色",
+  "skill_characters_global": "全部",
+  "skill_scope_title": "按角色指定技能",
+  "skill_scope_info": "指定可以使用该技能的角色。留空则所有角色都可以使用。",
+  "skill_scope_skill_label": "目标技能",
+  "skill_scope_characters_label": "使用角色",
+  "skill_scope_save_button": "保存指定",
+  "skill_scope_select_skill": "请选择要指定角色的技能。",
+  "skill_scope_saved": "已保存技能“{name}”的角色指定。",
+  "skill_characters_label": "使用角色（可选）",
+  "skill_characters_info": "留空则所有角色都可以使用。",
+  "skills_info_summary_character": "可用 {enabled} 个 / 共 {total} 个技能（当前角色）"
 }

@@ -365,23 +365,27 @@ with gr.Blocks() as demo:
     demo.load(fn=refresh_mcp_tools, inputs=[], outputs=[mcp_tools_multiselect, app_state.mcp_selected_tools_state])
 
     # Agent skills
-    def refresh_skills():
+    def refresh_skills(selected_character: str):
         from src.skills import get_skill_registry
 
         registry = get_skill_registry()
         registry.refresh()
         all_skills = registry.list_skills()
-        enabled = [s.name for s in all_skills if registry.is_enabled(s.name)]
+        available = registry.enabled_skills(character=selected_character)
+        enabled = [s.name for s in available]
         if not all_skills:
             info = _("skills_empty")
+        elif selected_character:
+            info = _("skills_info_summary_character", enabled=len(enabled), total=len(all_skills))
         else:
             info = _("skills_info_summary", enabled=len(enabled), total=len(all_skills))
         return gr.update(choices=enabled, value=[]), enabled, info
 
     skills_toggle.change(fn=lambda v: v if v is True else False, inputs=[skills_toggle], outputs=[app_state.skills_enabled_state])
     skills_multiselect.change(fn=lambda skills: skills or [], inputs=[skills_multiselect], outputs=[app_state.skills_selected_state])
-    skills_refresh_btn.click(fn=refresh_skills, inputs=[], outputs=[skills_multiselect, app_state.skills_selected_state, skills_info])
-    demo.load(fn=refresh_skills, inputs=[], outputs=[skills_multiselect, app_state.skills_selected_state, skills_info])
+    skills_refresh_btn.click(fn=refresh_skills, inputs=[character_dropdown], outputs=[skills_multiselect, app_state.skills_selected_state, skills_info])
+    demo.load(fn=refresh_skills, inputs=[character_dropdown], outputs=[skills_multiselect, app_state.skills_selected_state, skills_info])
+    character_dropdown.change(fn=refresh_skills, inputs=[character_dropdown], outputs=[skills_multiselect, app_state.skills_selected_state, skills_info])
 
     # Preset & Character
     character_dropdown.change(fn=chat_bot.update_system_message_and_profile, inputs=[character_dropdown, header.language_dropdown, app_state.session_id_state], outputs=[system_message_box, profile_image, preset_dropdown])

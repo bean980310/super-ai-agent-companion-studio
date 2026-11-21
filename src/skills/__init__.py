@@ -8,7 +8,17 @@ folder, and the project ``.agents/skills`` folder (or
 the full instructions are loaded on demand.
 """
 
-from .models import Skill, SkillError, load_skill_file, parse_skill_document, slugify_skill_name
+from .models import (
+    Skill,
+    SkillError,
+    character_matches,
+    load_skill_file,
+    normalize_character_slug,
+    normalize_characters,
+    parse_skill_document,
+    skill_matches_character,
+    slugify_skill_name,
+)
 from .registry import SkillRegistry, default_skill_roots, get_skill_registry
 from .tools import (
     LOAD_SKILL_TOOL,
@@ -29,9 +39,13 @@ __all__ = [
     "build_skill_executor",
     "build_skill_prompt",
     "build_skill_tool_specs",
+    "character_matches",
     "default_skill_roots",
     "get_skill_registry",
     "load_skill_file",
+    "normalize_character_slug",
+    "normalize_characters",
     "parse_skill_document",
+    "skill_matches_character",
     "slugify_skill_name",
 ]

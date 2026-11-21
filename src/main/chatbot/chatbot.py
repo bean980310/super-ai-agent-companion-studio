@@ -585,6 +585,7 @@ class Chatbot:
                         mcp_tools_enabled=use_mcp_agent,
                         skills_enabled=use_skill_agent,
                         skill_names=skills_selected if use_skill_agent else None,
+                        character=selected_character,
                         model_type=model_type,
                         selected_lora=selected_lora if selected_lora != "None" else None,
                         local_model_path=custom_path if selected_model == "사용자 지정 모델 경로 변경" else None,

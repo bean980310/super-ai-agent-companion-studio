@@ -7,7 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from src.skills.models import SkillError, load_skill_file, parse_skill_document, slugify_skill_name
+from src.skills.models import (
+    SkillError,
+    character_matches,
+    load_skill_file,
+    normalize_characters,
+    parse_skill_document,
+    slugify_skill_name,
+)
 from src.skills.registry import SkillRegistry, default_skill_roots
 from src.skills.tools import (
     LOAD_SKILL_TOOL,
@@ -24,13 +31,16 @@ def write_skill(
     description: str = "A test skill.",
     body: str = "# Steps\n\nDo the thing.",
     extra_files: dict[str, str] | None = None,
+    characters: list[str] | None = None,
 ) -> Path:
     skill_dir = root / name
     skill_dir.mkdir(parents=True, exist_ok=True)
-    (skill_dir / "SKILL.md").write_text(
-        f"---\nname: {name}\ndescription: {description}\n---\n\n{body}\n",
-        encoding="utf-8",
-    )
+    lines = ["---", f"name: {name}", f"description: {description}"]
+    if characters:
+        lines.append("characters:")
+        lines.extend(f"  - {json.dumps(character, ensure_ascii=False)}" for character in characters)
+    lines.extend(["---", "", body, ""])
+    (skill_dir / "SKILL.md").write_text("\n".join(lines), encoding="utf-8")
     for relative, content in (extra_files or {}).items():
         target = skill_dir / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -90,6 +100,102 @@ def test_load_skill_file(tmp_path: Path):
     assert skill.description == "Demo description"
     assert skill.source == "test"
     assert "Do the thing" in skill.body
+
+
+def test_load_skill_file_parses_characters(tmp_path: Path):
+    skill_dir = write_skill(
+        tmp_path,
+        "demo",
+        "Demo description",
+        characters=["미나미 아스카 (南飛鳥, みなみあすか, Minami Asuka)"],
+    )
+    skill = load_skill_file(skill_dir / "SKILL.md")
+    assert skill.characters == ["미나미 아스카 (南飛鳥, みなみあすか, Minami Asuka)"]
+    assert skill.is_global is False
+
+    global_dir = write_skill(tmp_path, "global-demo")
+    assert load_skill_file(global_dir / "SKILL.md").is_global is True
+
+
+def test_normalize_characters():
+    assert normalize_characters(None) == []
+    assert normalize_characters(["all"]) == []
+    assert normalize_characters("*") == []
+    assert normalize_characters("A; B\nC") == ["A", "B", "C"]
+    assert normalize_characters(["A", "a", "B"]) == ["A", "B"]
+
+
+def test_character_matching_accepts_display_name_and_slug():
+    display = "미나미 아스카 (南飛鳥, みなみあすか, Minami Asuka)"
+    assert character_matches(display, display) is True
+    assert character_matches("minami-asuka", display) is True
+    assert character_matches("minami_asuka", display) is True
+    assert character_matches("Minami Asuka", display) is True
+    assert character_matches("최유나 (崔有娜, チェ·ユナ, Choi Yuna)", display) is False
+    assert character_matches("", display) is True
+
+
+def test_registry_filters_skills_by_character(tmp_path: Path):
+    user_root = tmp_path / "user"
+    minami = "미나미 아스카 (南飛鳥, みなみあすか, Minami Asuka)"
+    yuna = "최유나 (崔有娜, チェ·ユナ, Choi Yuna)"
+    write_skill(user_root, "global-skill")
+    write_skill(user_root, "minami-skill", characters=[minami])
+    write_skill(user_root, "yuna-skill", characters=[yuna])
+
+    registry = SkillRegistry(roots=[user_root], user_root=user_root, config_path=tmp_path / "skills.json")
+
+    assert {s.name for s in registry.enabled_skills(character=minami)} == {"global-skill", "minami-skill"}
+    assert {s.name for s in registry.enabled_skills(character=yuna)} == {"global-skill", "yuna-skill"}
+    assert {s.name for s in registry.enabled_skills()} == {"global-skill", "minami-skill", "yuna-skill"}
+    assert registry.enabled_skills(names=["minami-skill"], character=yuna) == []
+    assert registry.skill_characters("minami-skill") == [minami]
+
+
+def test_character_scope_override_persists(tmp_path: Path):
+    user_root = tmp_path / "user"
+    minami = "미나미 아스카 (南飛鳥, みなみあすか, Minami Asuka)"
+    yuna = "최유나 (崔有娜, チェ·ユナ, Choi Yuna)"
+    write_skill(user_root, "demo", characters=[minami])
+    config_path = tmp_path / "skills.json"
+
+    registry = SkillRegistry(roots=[user_root], user_root=user_root, config_path=config_path)
+    registry.set_skill_characters("demo", [yuna])
+    assert registry.skill_characters("demo") == [yuna]
+    assert json.loads(config_path.read_text())["characters"] == {"demo": [yuna]}
+
+    reloaded = SkillRegistry(roots=[user_root], user_root=user_root, config_path=config_path)
+    assert reloaded.skill_characters("demo") == [yuna]
+    assert {s.name for s in reloaded.enabled_skills(character=yuna)} == {"demo"}
+    assert reloaded.enabled_skills(character=minami) == []
+
+    reloaded.set_skill_characters("demo", [])
+    assert reloaded.skill_characters("demo") == []
+    assert {s.name for s in reloaded.enabled_skills(character=minami)} == {"demo"}
+
+    reloaded.set_skill_characters("demo", "yuna")
+    assert reloaded.skill_characters("demo") == ["yuna"]
+
+
+def test_build_skill_tools_respect_character_scope(tmp_path: Path):
+    user_root = tmp_path / "user"
+    minami = "미나미 아스카 (南飛鳥, みなみあすか, Minami Asuka)"
+    yuna = "최유나 (崔有娜, チェ·ユナ, Choi Yuna)"
+    write_skill(user_root, "global-skill")
+    write_skill(user_root, "minami-skill", characters=[minami])
+    write_skill(user_root, "yuna-skill", characters=[yuna])
+
+    registry = SkillRegistry(roots=[user_root], user_root=user_root, config_path=tmp_path / "skills.json")
+    specs = build_skill_tool_specs(registry, character=minami)
+    enum = specs[0].parameters["properties"]["name"]["enum"]
+    assert enum == ["global-skill", "minami-skill"]
+
+    executor = build_skill_executor(registry, character=minami)
+    denied = executor(f"skills__{LOAD_SKILL_TOOL}", {"name": "yuna-skill"})
+    assert denied.success is False
+    allowed = executor(f"skills__{LOAD_SKILL_TOOL}", {"name": "minami-skill"})
+    assert allowed.success is True
+    assert "Do the thing" in allowed.content
 
 
 def test_registry_discovery_and_priority(tmp_path: Path):
@@ -257,6 +363,25 @@ def test_create_skill(tmp_path: Path):
         registry.create_skill("My New Skill", "duplicate", "")
 
 
+def test_create_skill_with_characters(tmp_path: Path):
+    minami = "미나미 아스카 (南飛鳥, みなみあすか, Minami Asuka)"
+    registry = SkillRegistry(roots=[tmp_path / "user"], user_root=tmp_path / "user", config_path=tmp_path / "skills.json")
+    skill = registry.create_skill(
+        "Minami Helper",
+        "Character-specific test skill.",
+        "# Steps\n\nHelp Minami.",
+        characters=[minami],
+    )
+
+    assert skill.characters == [minami]
+    assert registry.skill_characters("minami-helper") == [minami]
+    assert {s.name for s in registry.enabled_skills(character=minami)} == {"minami-helper"}
+    assert registry.enabled_skills(character="최유나 (崔有娜, チェ·ユナ, Choi Yuna)") == []
+
+    content = (tmp_path / "user" / "minami-helper" / "SKILL.md").read_text(encoding="utf-8")
+    assert "characters:" in content
+
+
 def test_import_skill_folder_and_markdown(tmp_path: Path):
     source_root = tmp_path / "source"
     source_skill = write_skill(source_root, "imported", "Imported skill", extra_files={"refs/a.md": "A"})
@@ -302,9 +427,9 @@ def test_run_tool_agent_skills_only(monkeypatch, tmp_path: Path):
         return "ok"
 
     monkeypatch.setattr(agent_module, "generate_answer", fake_generate_answer)
-    monkeypatch.setattr(agent_module, "build_skill_tool_specs", lambda names=None: build_skill_tool_specs(registry, names))
-    monkeypatch.setattr(agent_module, "build_skill_executor", lambda names=None: build_skill_executor(registry, names))
-    monkeypatch.setattr(agent_module, "build_skill_prompt", lambda names=None: build_skill_prompt(registry, names))
+    monkeypatch.setattr(agent_module, "build_skill_tool_specs", lambda names=None, character=None: build_skill_tool_specs(registry, names, character))
+    monkeypatch.setattr(agent_module, "build_skill_executor", lambda names=None, character=None: build_skill_executor(registry, names, character))
+    monkeypatch.setattr(agent_module, "build_skill_prompt", lambda names=None, character=None: build_skill_prompt(registry, names, character))
 
     class FakeManager:
         def list_tools(self):
@@ -328,6 +453,53 @@ def test_run_tool_agent_skills_only(monkeypatch, tmp_path: Path):
     result = captured["tool_executor"](f"skills__{LOAD_SKILL_TOOL}", {"name": "alpha"})
     assert result.success is True
     assert "Alpha steps." in result.content
+
+
+def test_run_tool_agent_filters_by_character(monkeypatch, tmp_path: Path):
+    from src.mcp import agent as agent_module
+
+    minami = "미나미 아스카 (南飛鳥, みなみあすか, Minami Asuka)"
+    yuna = "최유나 (崔有娜, チェ·ユナ, Choi Yuna)"
+    user_root = tmp_path / "user"
+    write_skill(user_root, "global-skill", "Global skill.")
+    write_skill(user_root, "minami-skill", "Minami skill.", characters=[minami])
+    write_skill(user_root, "yuna-skill", "Yuna skill.", characters=[yuna])
+    registry = SkillRegistry(roots=[user_root], user_root=user_root, config_path=tmp_path / "skills.json")
+
+    captured: dict = {}
+
+    def fake_generate_answer(**kwargs):
+        captured.update(kwargs)
+        return "ok"
+
+    monkeypatch.setattr(agent_module, "generate_answer", fake_generate_answer)
+    monkeypatch.setattr(agent_module, "build_skill_tool_specs", lambda names=None, character=None: build_skill_tool_specs(registry, names, character))
+    monkeypatch.setattr(agent_module, "build_skill_executor", lambda names=None, character=None: build_skill_executor(registry, names, character))
+    monkeypatch.setattr(agent_module, "build_skill_prompt", lambda names=None, character=None: build_skill_prompt(registry, names, character))
+
+    class FakeManager:
+        def list_tools(self):
+            return []
+
+    answer = agent_module.run_tool_agent(
+        history=[{"role": "system", "content": "You are helpful."}, {"role": "user", "content": "hello"}],
+        selected_model="test-model",
+        provider="openai",
+        manager=FakeManager(),
+        mcp_tools_enabled=False,
+        skills_enabled=True,
+        character=minami,
+    )
+
+    assert answer == "ok"
+    enum = captured["tool_specs"][0].parameters["properties"]["name"]["enum"]
+    assert enum == ["global-skill", "minami-skill"]
+    prompt = captured["history"][0]["content"]
+    assert "minami-skill" in prompt
+    assert "yuna-skill" not in prompt
+
+    denied = captured["tool_executor"](f"skills__{LOAD_SKILL_TOOL}", {"name": "yuna-skill"})
+    assert denied.success is False
 
 
 def test_run_tool_agent_without_tools_raises(tmp_path: Path):

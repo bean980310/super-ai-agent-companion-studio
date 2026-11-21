@@ -22,7 +22,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 try:  # PyYAML is a transitive dependency, but keep a graceful fallback.
     import yaml
@@ -38,6 +38,7 @@ _FRONTMATTER_RE = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)(.
 _NAME_RE = re.compile(r"[^a-z0-9_-]+")
 _VALID_NAME_RE = re.compile(r"\A[a-z0-9][a-z0-9_-]{0,63}\Z")
 _MAX_DESCRIPTION_CHARS = 1024
+_GLOBAL_CHARACTER_VALUES = {"", "*", "all", "any", "global", "모두", "전체", "すべて", "全部"}
 
 
 @dataclass
@@ -50,10 +51,16 @@ class Skill:
     body: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
     source: str = ""
+    characters: List[str] = field(default_factory=list)
 
     @property
     def directory(self) -> Path:
         return self.path.parent
+
+    @property
+    def is_global(self) -> bool:
+        """True when the skill is available to every character."""
+        return not self.characters
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -62,6 +69,7 @@ class Skill:
             "path": str(self.path),
             "source": self.source,
             "metadata": dict(self.metadata),
+            "characters": list(self.characters),
         }
 
 
@@ -74,6 +82,74 @@ def slugify_skill_name(value: str) -> str:
 
 def is_valid_skill_name(value: str) -> bool:
     return bool(_VALID_NAME_RE.fullmatch(str(value or "")))
+
+
+def normalize_characters(value: Any) -> List[str]:
+    """Normalize a ``characters`` frontmatter value into a list of names.
+
+    Accepts a YAML list, a single string, or a semicolon/newline separated
+    string. ``all``, ``any``, ``global`` and ``*`` mean "every character" and
+    therefore produce an empty list.
+    """
+    if value is None:
+        return []
+
+    if isinstance(value, str):
+        raw = re.split(r"[;\n]+", value)
+    elif isinstance(value, (list, tuple, set)):
+        raw = [str(item) for item in value]
+    else:
+        raw = [str(value)]
+
+    characters: List[str] = []
+    seen = set()
+    for item in raw:
+        item = str(item).strip()
+        if not item or item.casefold() in _GLOBAL_CHARACTER_VALUES:
+            continue
+        key = item.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        characters.append(item)
+    return characters
+
+
+def normalize_character_slug(value: str) -> str:
+    """Return a comparison slug for a character display name or alias."""
+    return slugify_skill_name(str(value or "").replace("_", "-"))
+
+
+def character_matches(skill_character: str, selected_character: str) -> bool:
+    """Whether a skill's character entry matches the selected character.
+
+    Exact display names win, but short slugs such as ``minami-asuka`` or
+    ``minami_asuka`` also match the full character name.
+    """
+    left = str(skill_character or "").strip()
+    right = str(selected_character or "").strip()
+    if not left:
+        return True
+    if not right:
+        return False
+    if left.casefold() == right.casefold():
+        return True
+    left_slug = normalize_character_slug(left)
+    return bool(left_slug) and left_slug == normalize_character_slug(right)
+
+
+def skill_matches_character(
+    skill: Skill,
+    selected_character: Optional[str],
+    characters: Optional[Iterable[str]] = None,
+) -> bool:
+    """Whether ``skill`` is available while chatting as ``selected_character``."""
+    if not selected_character:
+        return True
+    values = list(characters) if characters is not None else list(skill.characters)
+    if not values:
+        return True
+    return any(character_matches(value, selected_character) for value in values)
 
 
 def _parse_frontmatter(text: str) -> Tuple[Dict[str, Any], str]:
@@ -157,6 +233,11 @@ def load_skill_file(path: Path | str, source: str = "") -> Skill:
         raise SkillError(f"Failed to read {path}: {exc}") from exc
 
     name, description, body, metadata = parse_skill_document(text, fallback_name=path.parent.name)
+
+    raw_characters = metadata.get("characters")
+    if raw_characters is None:
+        raw_characters = metadata.get("character")
+
     return Skill(
         name=name,
         description=description,
@@ -164,4 +245,5 @@ def load_skill_file(path: Path | str, source: str = "") -> Skill:
         body=body,
         metadata=metadata,
         source=source,
+        characters=normalize_characters(raw_characters),
     )

@@ -43,6 +43,17 @@ Rules for `name`:
 - 1–64 characters
 - match the folder name when possible
 
+To make a skill available only to specific characters, add an optional
+`characters` list:
+
+```yaml
+characters:
+  - "미나미 아스카 (南飛鳥, みなみあすか, Minami Asuka)"
+```
+
+Omit the field (or use `all` / `*`) to keep the skill global. Character display
+names and short slugs such as `minami-asuka` are both accepted.
+
 ## Writing good instructions
 
 1. State the goal in one sentence.

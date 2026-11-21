@@ -137,6 +137,7 @@ def run_tool_agent(
     mcp_tools_enabled: bool = True,
     skills_enabled: bool = False,
     skill_names: Optional[List[str]] = None,
+    character: Optional[str] = None,
 ) -> str:
     """
     Run the model with MCP tools and/or agent skills.
@@ -174,6 +175,7 @@ def run_tool_agent(
         mcp_tools_enabled: Expose MCP tools (default True for backwards compatibility).
         skills_enabled: Expose enabled agent skills through the skill tools.
         skill_names: Optional subset of skill names. Empty/None means all enabled skills.
+        character: Selected character name; filters character-scoped skills.
 
     Returns:
         The assistant's final text answer (already stripped).
@@ -186,9 +188,9 @@ def run_tool_agent(
     skill_specs = []
     skill_executor = None
     if skills_enabled:
-        skill_specs = build_skill_tool_specs(names=skill_names)
+        skill_specs = build_skill_tool_specs(names=skill_names, character=character)
         if skill_specs:
-            skill_executor = build_skill_executor(names=skill_names)
+            skill_executor = build_skill_executor(names=skill_names, character=character)
             tool_specs.extend(skill_specs)
 
     if not tool_specs:
@@ -200,7 +202,7 @@ def run_tool_agent(
     if mcp_tools:
         hints.append(_TOOL_USAGE_HINT)
     if skill_specs:
-        skill_prompt = build_skill_prompt(names=skill_names)
+        skill_prompt = build_skill_prompt(names=skill_names, character=character)
         if skill_prompt:
             hints.append(skill_prompt)
 

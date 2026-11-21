@@ -229,5 +229,17 @@
   "plugin_clone_success": "プラグイン「{name}」をインストールしました。",
   "plugin_select_required": "プラグインを選択してください。",
   "plugin_clone_url_required": "リポジトリ URL を入力してください。",
-  "plugin_error_label": "エラー内容"
+  "plugin_error_label": "エラー内容",
+  "skill_col_characters": "キャラクター",
+  "skill_characters_global": "すべて",
+  "skill_scope_title": "キャラクター別スキル指定",
+  "skill_scope_info": "スキルを使用できるキャラクターを指定します。未選択の場合はすべてのキャラクターが使用できます。",
+  "skill_scope_skill_label": "対象スキル",
+  "skill_scope_characters_label": "使用するキャラクター",
+  "skill_scope_save_button": "指定を保存",
+  "skill_scope_select_skill": "キャラクターを指定するスキルを選択してください。",
+  "skill_scope_saved": "スキル「{name}」のキャラクター指定を保存しました。",
+  "skill_characters_label": "使用キャラクター（任意）",
+  "skill_characters_info": "未選択の場合はすべてのキャラクターが使用できます。",
+  "skills_info_summary_character": "利用可能 {enabled} 件 / 全 {total} 件（現在のキャラクター）"
 }

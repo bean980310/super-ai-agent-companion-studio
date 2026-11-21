@@ -229,5 +229,17 @@
   "plugin_clone_success": "'{name}' 플러그인을 설치했습니다.",
   "plugin_select_required": "플러그인을 선택하세요.",
   "plugin_clone_url_required": "저장소 URL을 입력하세요.",
-  "plugin_error_label": "오류 내용"
+  "plugin_error_label": "오류 내용",
+  "skill_col_characters": "캐릭터",
+  "skill_characters_global": "전체",
+  "skill_scope_title": "캐릭터별 스킬 지정",
+  "skill_scope_info": "스킬을 사용할 캐릭터를 지정합니다. 선택을 비우면 모든 캐릭터가 사용할 수 있습니다.",
+  "skill_scope_skill_label": "대상 스킬",
+  "skill_scope_characters_label": "사용할 캐릭터",
+  "skill_scope_save_button": "지정 저장",
+  "skill_scope_select_skill": "캐릭터를 지정할 스킬을 선택하세요.",
+  "skill_scope_saved": "'{name}' 스킬의 캐릭터 지정을 저장했습니다.",
+  "skill_characters_label": "사용 캐릭터 (선택)",
+  "skill_characters_info": "선택하지 않으면 모든 캐릭터가 사용할 수 있습니다.",
+  "skills_info_summary_character": "스킬 {enabled}개 사용 가능 / 전체 {total}개 (현재 캐릭터 기준)"
 }

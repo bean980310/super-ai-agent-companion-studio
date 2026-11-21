@@ -229,5 +229,17 @@
   "plugin_clone_success": "已安裝外掛「{name}」。",
   "plugin_select_required": "請先選擇外掛。",
   "plugin_clone_url_required": "請輸入倉庫 URL。",
-  "plugin_error_label": "錯誤詳情"
+  "plugin_error_label": "錯誤詳情",
+  "skill_col_characters": "角色",
+  "skill_characters_global": "全部",
+  "skill_scope_title": "依角色指定技能",
+  "skill_scope_info": "指定可以使用該技能的角色。留空則所有角色都可以使用。",
+  "skill_scope_skill_label": "目標技能",
+  "skill_scope_characters_label": "使用角色",
+  "skill_scope_save_button": "儲存指定",
+  "skill_scope_select_skill": "請選擇要指定角色的技能。",
+  "skill_scope_saved": "已儲存技能「{name}」的角色指定。",
+  "skill_characters_label": "使用角色（選填）",
+  "skill_characters_info": "留空則所有角色都可以使用。",
+  "skills_info_summary_character": "可用 {enabled} 個 / 共 {total} 個技能（目前角色）"
 }
