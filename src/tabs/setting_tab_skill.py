@@ -17,7 +17,7 @@ import gradio as gr
 from ai_companion_core import logger
 
 from ..common.translations import _
-from ..skills import SkillError, default_skill_roots, get_skill_registry
+from ..skills import SkillError, default_agent_roots, default_skill_roots, get_skill_registry
 
 DF_HEADERS = [
     _("skill_col_name"),
@@ -78,12 +78,14 @@ def create_skill_management_tab(demo: gr.Blocks | None = None):
     """Build the Skills settings tab and wire its events."""
     registry = get_skill_registry()
     roots_text = "\n".join(f"- `{root}`" for root in default_skill_roots())
+    agent_roots_text = "\n".join(f"- `{root}/<character>/skills`" for root in default_agent_roots())
     character_names = _character_names()
 
     with gr.Tab(_("skill_tab_title")):
         gr.Markdown(_("skill_tab_intro"))
         with gr.Accordion(_("skill_paths_title"), open=False):
             gr.Markdown(roots_text)
+            gr.Markdown(f"**{_('skill_agent_paths_title')}**\n{agent_roots_text}")
 
         with gr.Row():
             refresh_btn = gr.Button(_("skill_reload_button"), variant="secondary")

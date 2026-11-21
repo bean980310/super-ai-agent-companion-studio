@@ -20,6 +20,7 @@ from .models import (
     character_matches,
     is_valid_skill_name,
     load_skill_file,
+    normalize_character_slug,
     normalize_characters,
     slugify_skill_name,
 )
@@ -98,6 +99,18 @@ def iter_skill_files(root: Path):
             dirnames[:] = []
 
 
+def _dedupe_paths(roots: Sequence[Path]) -> List[Path]:
+    seen = set()
+    unique: List[Path] = []
+    for root in roots:
+        key = str(root.expanduser().resolve()) if root.exists() else str(root.expanduser())
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(root)
+    return unique
+
+
 def default_skill_roots() -> List[Path]:
     """Return the default skill search roots, highest priority first."""
     roots: List[Path] = []
@@ -113,16 +126,31 @@ def default_skill_roots() -> List[Path]:
     roots.append(Path.cwd() / "skills")
     roots.append(Path.cwd() / ".agents" / "skills")
 
-    # Preserve order while removing duplicates.
-    seen = set()
-    unique: List[Path] = []
-    for root in roots:
-        key = str(root.expanduser().resolve()) if root.exists() else str(root.expanduser())
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(root)
-    return unique
+    return _dedupe_paths(roots)
+
+
+def default_agent_roots() -> List[Path]:
+    """Return roots that may contain ``<character>/skills/<skill>/SKILL.md``.
+
+    Each root is scanned for character profile folders. Supported layouts::
+
+        ~/.ai-companion/agents/<character>/skills/<skill>/SKILL.md
+        ~/.agents/<character>/skills/<skill>/SKILL.md
+        <project>/agents/<character>/skills/<skill>/SKILL.md
+    """
+    roots: List[Path] = []
+
+    env_dirs = os.environ.get("AI_COMPANION_AGENTS_DIRS", "")
+    for part in env_dirs.split(os.pathsep):
+        part = part.strip()
+        if part:
+            roots.append(Path(part).expanduser())
+
+    roots.append(APPDATA_PATH / "agents")
+    roots.append(Path.home() / ".agents")
+    roots.append(Path.cwd() / "agents")
+
+    return _dedupe_paths(roots)
 
 
 class SkillRegistry:
@@ -134,6 +162,12 @@ class SkillRegistry:
     files themselves stay in ``~/.ai-companion/skills`` (user),
     ``~/.agents/skills`` (shared agent skills), or a project ``skills/``
     directory.
+
+    Character-only skills may also live under
+    ``<agent-root>/<character>/skills/<skill>/SKILL.md``. Agent roots default
+    to the standard locations for the process-wide registry; when ``roots`` is
+    supplied explicitly (for example in tests), pass ``agent_roots`` as well to
+    opt in.
     """
 
     def __init__(
@@ -141,6 +175,7 @@ class SkillRegistry:
         roots: Optional[Sequence[Path | str]] = None,
         config_path: Optional[Path | str] = None,
         user_root: Optional[Path | str] = None,
+        agent_roots: Optional[Sequence[Path | str]] = None,
     ) -> None:
         self.user_root = Path(user_root).expanduser() if user_root else APPDATA_PATH / "skills"
         configured_roots = [Path(r).expanduser() for r in roots] if roots is not None else default_skill_roots()
@@ -148,6 +183,11 @@ class SkillRegistry:
         configured_roots = [r for r in configured_roots if not self._same_path(r, self.user_root)]
         configured_roots.insert(0, self.user_root)
         self.roots: List[Path] = configured_roots
+
+        if agent_roots is None:
+            agent_roots = default_agent_roots() if roots is None else []
+        self.agent_roots: List[Path] = _dedupe_paths([Path(r).expanduser() for r in agent_roots])
+
         self.config_path = Path(config_path).expanduser() if config_path else APPDATA_PATH / "skills.json"
 
         self._skills: Dict[str, Skill] = {}
@@ -180,6 +220,60 @@ class SkillRegistry:
         except (OSError, ValueError):
             return str(root)
 
+    def _resolve_character_name(self, folder_name: str) -> str:
+        """Map an ``agents/<folder>`` name to a display name when possible."""
+        try:
+            from src.common.character_info import characters
+        except Exception:
+            return folder_name
+
+        if folder_name in characters:
+            return folder_name
+
+        slug = normalize_character_slug(folder_name)
+        if slug:
+            for display_name in characters:
+                if normalize_character_slug(display_name) == slug:
+                    return display_name
+        return folder_name
+
+    def _load_agent_skills(self, skills: Dict[str, Skill]) -> None:
+        """Load ``<agent-root>/<character>/skills/**/SKILL.md`` entries."""
+        for agent_root in self.agent_roots:
+            agent_root = Path(agent_root).expanduser()
+            if not agent_root.is_dir():
+                continue
+
+            root_label = self._source_label(agent_root)
+            for character_dir in sorted(agent_root.iterdir(), key=lambda path: path.name.lower()):
+                if not character_dir.is_dir():
+                    continue
+                if character_dir.name.startswith(".") or character_dir.name in _SKIP_DIR_NAMES:
+                    continue
+
+                skills_dir = character_dir / "skills"
+                if not skills_dir.is_dir():
+                    continue
+
+                character = self._resolve_character_name(character_dir.name)
+                label = f"{root_label}/{character_dir.name}"
+                for skill_file in iter_skill_files(skills_dir):
+                    try:
+                        skill = load_skill_file(skill_file, source=label)
+                    except SkillError as exc:
+                        logger.warning(f"Skipping invalid skill at {skill_file}: {exc}")
+                        continue
+
+                    if character not in skill.characters:
+                        skill.characters.insert(0, character)
+
+                    if skill.name in skills:
+                        logger.warning(
+                            f"Duplicate skill '{skill.name}' at {skill_file}; keeping {skills[skill.name].path}"
+                        )
+                        continue
+                    skills[skill.name] = skill
+
     def refresh(self) -> List[Skill]:
         """Rescan all roots recursively and return the discovered skills."""
         with self._lock:
@@ -202,6 +296,8 @@ class SkillRegistry:
                         )
                         continue
                     skills[skill.name] = skill
+
+            self._load_agent_skills(skills)
 
             self._skills = skills
             self._loaded = True

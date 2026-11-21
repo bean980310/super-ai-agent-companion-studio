@@ -15,7 +15,7 @@ from src.skills.models import (
     parse_skill_document,
     slugify_skill_name,
 )
-from src.skills.registry import SkillRegistry, default_skill_roots
+from src.skills.registry import SkillRegistry, default_agent_roots, default_skill_roots
 from src.skills.tools import (
     LOAD_SKILL_TOOL,
     READ_SKILL_FILE_TOOL,
@@ -91,6 +91,16 @@ def test_default_roots_include_home_agents(monkeypatch, tmp_path: Path):
     assert roots[0] == extra
     assert Path.home() / ".agents" / "skills" in roots
     assert Path.cwd() / ".agents" / "skills" in roots
+
+
+def test_default_agent_roots(monkeypatch, tmp_path: Path):
+    extra = tmp_path / "extra-agents"
+    monkeypatch.setenv("AI_COMPANION_AGENTS_DIRS", str(extra))
+
+    roots = default_agent_roots()
+    assert roots[0] == extra
+    assert Path.home() / ".agents" in roots
+    assert Path.cwd() / "agents" in roots
 
 
 def test_load_skill_file(tmp_path: Path):
@@ -254,6 +264,85 @@ def test_registry_skips_hidden_and_dependency_dirs(tmp_path: Path):
 
     registry = SkillRegistry(roots=[user_root], user_root=user_root, config_path=tmp_path / "skills.json")
     assert [skill.name for skill in registry.list_skills()] == ["visible"]
+
+
+def test_registry_discovers_character_agent_skills(tmp_path: Path):
+    user_root = tmp_path / "user"
+    agent_root = tmp_path / "agents"
+    write_skill(user_root, "global-skill")
+    write_skill(agent_root / "test-hero" / "skills", "agent-skill", description="Character skill.")
+
+    registry = SkillRegistry(
+        roots=[user_root],
+        user_root=user_root,
+        config_path=tmp_path / "skills.json",
+        agent_roots=[agent_root],
+    )
+
+    skill = registry.get("agent-skill")
+    assert skill is not None
+    assert skill.characters == ["test-hero"]
+    assert skill.source.endswith("test-hero")
+    assert {s.name for s in registry.enabled_skills(character="test-hero")} == {"global-skill", "agent-skill"}
+    assert {s.name for s in registry.enabled_skills(character="other-hero")} == {"global-skill"}
+
+
+def test_registry_discovers_nested_character_agent_skills(tmp_path: Path):
+    user_root = tmp_path / "user"
+    agent_root = tmp_path / "agents"
+    write_skill(agent_root / "test-hero" / "skills" / "group", "nested-agent-skill")
+
+    registry = SkillRegistry(
+        roots=[user_root],
+        user_root=user_root,
+        config_path=tmp_path / "skills.json",
+        agent_roots=[agent_root],
+    )
+
+    assert registry.get("nested-agent-skill") is not None
+    assert registry.get("nested-agent-skill").characters == ["test-hero"]
+
+
+def test_agent_skill_folder_unions_frontmatter_characters(tmp_path: Path):
+    user_root = tmp_path / "user"
+    agent_root = tmp_path / "agents"
+    write_skill(agent_root / "test-hero" / "skills", "team-skill", characters=["sidekick"])
+
+    registry = SkillRegistry(
+        roots=[user_root],
+        user_root=user_root,
+        config_path=tmp_path / "skills.json",
+        agent_roots=[agent_root],
+    )
+
+    assert registry.get("team-skill").characters == ["test-hero", "sidekick"]
+
+
+def test_agent_skill_scope_can_be_overridden(tmp_path: Path):
+    user_root = tmp_path / "user"
+    agent_root = tmp_path / "agents"
+    write_skill(agent_root / "test-hero" / "skills", "agent-skill")
+
+    registry = SkillRegistry(
+        roots=[user_root],
+        user_root=user_root,
+        config_path=tmp_path / "skills.json",
+        agent_roots=[agent_root],
+    )
+
+    registry.set_skill_characters("agent-skill", ["other-hero"])
+    assert registry.skill_characters("agent-skill") == ["other-hero"]
+    assert registry.enabled_skills(character="test-hero") == []
+    assert {s.name for s in registry.enabled_skills(character="other-hero")} == {"agent-skill"}
+
+
+def test_agent_roots_are_not_scanned_when_roots_are_explicit(tmp_path: Path):
+    user_root = tmp_path / "user"
+    agent_root = tmp_path / "agents"
+    write_skill(agent_root / "test-hero" / "skills", "agent-skill")
+
+    registry = SkillRegistry(roots=[user_root], user_root=user_root, config_path=tmp_path / "skills.json")
+    assert registry.get("agent-skill") is None
 
 
 def test_enable_disable_persists(tmp_path: Path):

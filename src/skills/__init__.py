@@ -19,7 +19,7 @@ from .models import (
     skill_matches_character,
     slugify_skill_name,
 )
-from .registry import SkillRegistry, default_skill_roots, get_skill_registry
+from .registry import SkillRegistry, default_agent_roots, default_skill_roots, get_skill_registry
 from .tools import (
     LOAD_SKILL_TOOL,
     READ_SKILL_FILE_TOOL,
@@ -40,6 +40,7 @@ __all__ = [
     "build_skill_prompt",
     "build_skill_tool_specs",
     "character_matches",
+    "default_agent_roots",
     "default_skill_roots",
     "get_skill_registry",
     "load_skill_file",

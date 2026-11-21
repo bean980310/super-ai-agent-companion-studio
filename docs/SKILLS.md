@@ -43,7 +43,39 @@ characters:
 
 ## Character-specific skills
 
-A skill can be scoped to one or more characters:
+There are two ways to scope a skill to characters.
+
+### Character skill folders
+
+Put the skill inside a character profile folder:
+
+```
+agents/
+└── minami-asuka/
+    └── skills/
+        └── roleplay/
+            └── SKILL.md
+```
+
+Every skill under `agents/<character>/skills/` is automatically available only
+to that character. The character folder may use either the full display name or
+a slug such as `minami-asuka` / `minami_asuka`; it is matched against the
+character dropdown.
+
+Supported agent roots:
+
+1. `AI_COMPANION_AGENTS_DIRS` (OS-path-separated list of extra roots)
+2. `~/.ai-companion/agents`
+3. `~/.agents`
+4. `<project>/agents`
+
+Each root is searched as `<root>/<character>/skills/**/SKILL.md`. If a skill
+also declares `characters` in its frontmatter, the folder's character is added
+to that list.
+
+### `characters` frontmatter
+
+A skill can also be scoped with a frontmatter list:
 
 ```yaml
 ---
@@ -66,6 +98,9 @@ selected character changes, the Chat side panel only lists skills available to
 that character, and the model only receives those skill tools. Skills with no
 character scope stay available to everyone.
 
+Skill names should be unique. Normal skill roots are scanned before character
+folders, so the first skill with a given name wins.
+
 ## Where skills are discovered
 
 Highest priority first:
@@ -86,6 +121,11 @@ directories plus common dependency/build folders (`node_modules`, `venv`,
 
 The repository ships one example skill in `skills/skill-creator/`.
 
+Character folders are scanned separately from the global skill roots; see
+[Character skill folders](#character-skill-folders) above. A skill found under
+`agents/<character>/skills/` gets that character as its default scope, and the
+Skills settings tab can still override it.
+
 ## Using skills
 
 1. Open **Settings → Configuration → Skills**.
@@ -93,7 +133,8 @@ The repository ships one example skill in `skills/skill-creator/`.
    `~/.ai-companion/skills.json`.
 3. Use **Character-specific skills** in the same tab to assign existing skills
    to characters. Selections made here are stored in `skills.json` and override
-   the `characters` frontmatter without editing the skill files.
+   both the folder location and the `characters` frontmatter without editing the
+   skill files.
 4. In the Chat side panel, enable **Use Agent Skills** and optionally select a
    subset of the skills available for the current character.
 5. Ask a question that matches a skill description. The model sees only the

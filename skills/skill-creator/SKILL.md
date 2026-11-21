@@ -71,7 +71,8 @@ names and short slugs such as `minami-asuka` are both accepted.
 4. Put long references or examples in `references/` instead of bloating
    `SKILL.md`.
 5. Save the folder under `~/.ai-companion/skills/<name>/` so the app discovers
-   it, then enable it in Settings → Skills.
+   it, then enable it in Settings → Skills. For a character-specific skill, use
+   `agents/<character>/skills/<name>/` instead.
 
 ## Verification
 

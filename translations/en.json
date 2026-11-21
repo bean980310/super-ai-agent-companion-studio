@@ -242,5 +242,6 @@
   "skill_scope_saved": "Saved the character scope for '{name}'.",
   "skill_characters_label": "Characters (optional)",
   "skill_characters_info": "Leave empty to make the skill available to every character.",
-  "skills_info_summary_character": "{enabled} available / {total} total skills (current character)"
+  "skills_info_summary_character": "{enabled} available / {total} total skills (current character)",
+  "skill_agent_paths_title": "Character skill paths"
 }

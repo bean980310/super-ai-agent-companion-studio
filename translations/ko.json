@@ -241,5 +241,6 @@
   "skill_scope_saved": "'{name}' 스킬의 캐릭터 지정을 저장했습니다.",
   "skill_characters_label": "사용 캐릭터 (선택)",
   "skill_characters_info": "선택하지 않으면 모든 캐릭터가 사용할 수 있습니다.",
-  "skills_info_summary_character": "스킬 {enabled}개 사용 가능 / 전체 {total}개 (현재 캐릭터 기준)"
+  "skills_info_summary_character": "스킬 {enabled}개 사용 가능 / 전체 {total}개 (현재 캐릭터 기준)",
+  "skill_agent_paths_title": "캐릭터 스킬 경로"
 }

@@ -241,5 +241,6 @@
   "skill_scope_saved": "已保存技能“{name}”的角色指定。",
   "skill_characters_label": "使用角色（可选）",
   "skill_characters_info": "留空则所有角色都可以使用。",
-  "skills_info_summary_character": "可用 {enabled} 个 / 共 {total} 个技能（当前角色）"
+  "skills_info_summary_character": "可用 {enabled} 个 / 共 {total} 个技能（当前角色）",
+  "skill_agent_paths_title": "角色技能路径"
 }

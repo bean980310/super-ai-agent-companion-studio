@@ -241,5 +241,6 @@
   "skill_scope_saved": "スキル「{name}」のキャラクター指定を保存しました。",
   "skill_characters_label": "使用キャラクター（任意）",
   "skill_characters_info": "未選択の場合はすべてのキャラクターが使用できます。",
-  "skills_info_summary_character": "利用可能 {enabled} 件 / 全 {total} 件（現在のキャラクター）"
+  "skills_info_summary_character": "利用可能 {enabled} 件 / 全 {total} 件（現在のキャラクター）",
+  "skill_agent_paths_title": "キャラクタースキルのパス"
 }
